@@ -1,31 +1,21 @@
-import js from '@eslint/js';
-import { FlatCompat } from 'eslint-compat';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import globals from 'globals';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-export default [
-  js.configs.recommended,
-  ...compat.extends(
+export default {
+  root: true,
+  env: { browser: true, es2020: true },
+  extends: [
+    'eslint:recommended',
+    'plugin:react/recommended',
+    'plugin:react/jsx-runtime',
     'plugin:react-hooks/recommended',
-    'plugin:react-refresh/recommended',
-  ),
-  {
-    languageOptions: {
-      globals: {
-        ...globals.browser,
-        ...globals.es2021,
-      },
-    },
-    rules: {
-      'no-unused-vars': 'warn',
-    },
+  ],
+  ignorePatterns: ['dist', '.eslintrc.cjs'],
+  parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
+  settings: { react: { version: '18.2' } },
+  plugins: ['react-refresh'],
+  rules: {
+    'react-refresh/only-export-components': [
+      'warn',
+      { allowConstantExport: true },
+    ],
+    'no-unused-vars': 'warn',
   },
-]; 
+}; 
