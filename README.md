@@ -42,22 +42,56 @@ A modern booking system for Big Cat Pressure Washing service.
    npm run dev
    ```
 
+## Testing
+
+```bash
+# Run tests with type checking
+npm test
+
+# Run tests without type checking
+npm run test:no-check
+```
+
 ## Deployment
 
-1. Build the application
+### Supabase Edge Functions Deployment
+
+1. **Login to Supabase CLI**
    ```bash
-   npm run build
+   npm run supabase:deploy -- --login
    ```
 
-2. Deploy to your preferred hosting service
+2. **Link Your Project**
+   ```bash
+   npm run supabase:deploy -- --link --project-ref your-project-ref
+   ```
+   Replace `your-project-ref` with your actual Supabase project reference.
 
-## Environment Variables
+3. **Deploy Functions**
+   ```bash
+   # Deploy all functions
+   npm run supabase:deploy:all
 
-The following environment variables are required:
+   # Or deploy specific functions
+   npm run supabase:deploy:rate-limiter
+   ```
 
-- `VITE_SUPABASE_URL`: Your Supabase project URL
-- `VITE_SUPABASE_ANON_KEY`: Your Supabase anonymous key
-- `VITE_STRIPE_PUBLISHABLE_KEY`: Your Stripe publishable key
+### Environment Variables
+
+Make sure the following environment variables are set in your Supabase project:
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+
+## Project Structure
+
+- `src/` - Frontend React application
+- `supabase/functions/` - Edge Functions
+  - `shared/` - Shared utilities and types
+  - `create-booking/` - Booking creation endpoint
+  - `confirm-payment/` - Payment confirmation endpoint
+  - `rate-limiter/` - Rate limiting functionality
 
 ## License
 

@@ -1,37 +1,48 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.39.7';
-import { z } from 'npm:zod@3.22.4';
+// @deno-types="npm:@supabase/supabase-js@2.39.7"
+import { createClient } from '@supabase/supabase-js';
+// @deno-types="npm:zod@3.22.4"
+import { z } from 'zod';
+import { verifyAuth } from '../shared/auth.ts';
+import { RateLimiter } from '../shared/rate-limiter.ts';
+import { sanitizeInput, validateInput } from '../shared/validation.ts';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import Stripe from 'stripe'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+}
 
 // Validation schemas
 const serviceSchema = z.object({
   service_type: z.enum(['Concrete Cleaning', 'House Cleaning', 'Roof Cleaning', 'Gutter Cleaning']),
-  material: z.string().optional().nullable(),
-  size: z.number().positive('Size must be a positive number'),
+  material: z.string().max(100).optional().nullable(),
+  size: z.number().positive().max(100000),
   stories: z.number().int().min(1).max(3).optional().nullable(),
   roof_pitch: z.enum(['low pitch', 'medium pitch', 'high pitch']).optional().nullable(),
-  price: z.number().positive('Price must be a positive number'),
-});
+  price: z.number().positive().max(100000),
+})
 
 const bookingSchema = z.object({
-  customer_email: z.string().email('Invalid email address'),
-  customer_phone: z.string().optional().nullable(),
-  customer_name: z.string().optional().nullable(),
-  address: z.string().min(1, 'Address is required'),
-  city: z.string().min(1, 'City is required'),
-  state: z.string().min(1, 'State is required'),
-  zip: z.string().min(5, 'ZIP code must be at least 5 characters'),
-  total_amount: z.number().positive('Total amount must be a positive number'),
-  deposit_amount: z.number().positive('Deposit amount must be a positive number'),
-  services: z.array(serviceSchema).min(1, 'At least one service is required'),
-});
-
-type Booking = z.infer<typeof bookingSchema>;
+  customer_email: z.string().email().max(255),
+  customer_phone: z.string().max(20).optional().nullable(),
+  customer_name: z.string().max(100).optional().nullable(),
+  address: z.string().min(1).max(200),
+  city: z.string().min(1).max(100),
+  state: z.string().min(1).max(50),
+  zip: z.string().min(5).max(10),
+  total_amount: z.number().positive().max(50000),
+  deposit_amount: z.number().positive().max(5000),
+  services: z.array(serviceSchema).min(1).max(10),
+  is_guest: z.boolean(),
+})
 
 async function sendSlackNotification(booking: any, services: any[]) {
+  const webhookUrl = Deno.env.get('SLACK_WEBHOOK_URL')
+  if (!webhookUrl) return
+
   const message = {
     blocks: [
       {
@@ -47,11 +58,11 @@ async function sendSlackNotification(booking: any, services: any[]) {
         fields: [
           {
             type: 'mrkdwn',
-            text: `*Customer:*\n${booking.customer_email}`
+            text: `*Customer:*\n${sanitizeInput(booking.customer_email)}`
           },
           {
             type: 'mrkdwn',
-            text: `*Location:*\n${booking.city}, ${booking.state}`
+            text: `*Location:*\n${sanitizeInput(booking.city)}, ${sanitizeInput(booking.state)}`
           }
         ]
       },
@@ -72,89 +83,78 @@ async function sendSlackNotification(booking: any, services: any[]) {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Services:*\n${services.map(s => `• ${s.service_type} - ${s.size} ${s.service_type.toLowerCase().includes('gutter') ? 'ft' : 'sqft'}${s.material ? ` (${s.material})` : ''}${s.stories ? ` - ${s.stories} ${s.stories === 1 ? 'story' : 'stories'}` : ''}${s.roof_pitch ? ` - ${s.roof_pitch}` : ''} - $${s.price.toFixed(2)}`).join('\n')}`
+          text: `*Services:*\n${services.map(s => `• ${sanitizeInput(s.service_type)} - ${s.size} ${s.service_type.toLowerCase().includes('gutter') ? 'ft' : 'sqft'}${s.material ? ` (${sanitizeInput(s.material)})` : ''}${s.stories ? ` - ${s.stories} ${s.stories === 1 ? 'story' : 'stories'}` : ''}${s.roof_pitch ? ` - ${s.roof_pitch}` : ''} - $${s.price.toFixed(2)}`).join('\n')}`
         }
       }
     ]
-  };
-
-  const response = await fetch(Deno.env.get('SLACK_WEBHOOK_URL') ?? '', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(message)
-  });
-
-  if (!response.ok) {
-    console.error('Failed to send Slack notification:', await response.text());
-  }
-}
-
-Deno.serve(async (req) => {
-  // Handle CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Initialize Supabase client with service role key
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(message)
+    })
 
-    // Parse and validate request body
-    const body: Booking = await req.json();
-    const validatedData = bookingSchema.parse(body);
+    if (!response.ok) {
+      console.error('Failed to send Slack notification:', await response.text())
+    }
+  } catch (error) {
+    console.error('Error sending Slack notification:', error)
+  }
+}
 
-    // Get the JWT token from the request
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('Missing authorization header');
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders, status: 204 })
+  }
+
+  try {
+    // Verify authentication
+    const { user, headers, supabase } = await verifyAuth(req)
+
+    // Implement rate limiting
+    const rateLimiter = RateLimiter.getInstance()
+    const clientIp = headers['x-forwarded-for'] || 'unknown'
+    if (!rateLimiter.check(clientIp)) {
+      return new Response(
+        JSON.stringify({ error: 'Too many requests' }),
+        { 
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        },
+      )
     }
 
-    // Check if this is a guest booking (using anon key) or authenticated user
-    const isGuestBooking = authHeader.includes(Deno.env.get('SUPABASE_ANON_KEY') ?? '');
-    let userId: string | null = null;
+    // Parse and validate request body
+    const body = await req.json()
+    const validatedData = validateInput(bookingSchema, body)
 
-    if (!isGuestBooking) {
-      // For authenticated users, verify the JWT token
-      const { data: { user }, error: authError } = await supabase.auth.getUser(
-        authHeader.replace('Bearer ', '')
-      );
-
-      if (authError || !user) {
-        throw new Error('Invalid authorization token');
-      }
-
-      // Verify the customer email matches the authenticated user
-      if (validatedData.customer_email !== user.email) {
-        throw new Error('Email does not match authenticated user');
-      }
-
-      userId = user.id;
+    // Sanitize inputs
+    const sanitizedData = {
+      ...validatedData,
+      customer_name: validatedData.customer_name ? sanitizeInput(validatedData.customer_name) : null,
+      customer_phone: validatedData.customer_phone ? sanitizeInput(validatedData.customer_phone) : null,
+      address: sanitizeInput(validatedData.address),
+      city: sanitizeInput(validatedData.city),
+      state: sanitizeInput(validatedData.state),
+      zip: sanitizeInput(validatedData.zip),
     }
 
     // Create the booking
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .insert({
-        customer_email: validatedData.customer_email,
-        customer_phone: validatedData.customer_phone,
-        customer_name: validatedData.customer_name,
-        address: validatedData.address,
-        city: validatedData.city,
-        state: validatedData.state,
-        zip: validatedData.zip,
-        total_amount: validatedData.total_amount,
-        deposit_amount: validatedData.deposit_amount,
+        ...sanitizedData,
+        user_id: user.id,
         status: 'pending',
-        is_guest: isGuestBooking,
-        user_id: userId
+        created_at: new Date().toISOString(),
+        ip_address: clientIp,
       })
       .select()
-      .single();
+      .single()
 
-    if (bookingError) throw bookingError;
+    if (bookingError) throw bookingError
 
     // Insert booking services
     const bookingServices = validatedData.services.map(service => ({
@@ -164,56 +164,67 @@ Deno.serve(async (req) => {
       size: service.size,
       stories: service.stories,
       roof_pitch: service.roof_pitch,
-      price: service.price
-    }));
+      price: service.price,
+    }))
 
     const { error: servicesError } = await supabase
       .from('booking_services')
-      .insert(bookingServices);
+      .insert(bookingServices)
 
-    if (servicesError) throw servicesError;
-
-    // Send Slack notification
-    await sendSlackNotification(booking, validatedData.services);
-
-    // For guest bookings, set the guest token in the response
-    const responseData = {
-      success: true,
-      data: booking,
-      ...(isGuestBooking && { guest_token: booking.guest_token })
-    };
-
-    return new Response(
-      JSON.stringify(responseData),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 201
-      }
-    );
-  } catch (error) {
-    // Handle Zod validation errors
-    if (error instanceof z.ZodError) {
-      const errors = error.errors.map(err => ({
-        path: err.path.join('.'),
-        message: err.message
-      }));
-      
-      return new Response(
-        JSON.stringify({ success: false, errors }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400
-        }
-      );
+    if (servicesError) {
+      // Clean up the booking if services insertion fails
+      await supabase.from('bookings').delete().eq('id', booking.id)
+      throw servicesError
     }
 
-    // Handle other errors
+    // Send Slack notification
+    await sendSlackNotification(booking, validatedData.services)
+
+    // Log the activity
+    const logResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/log-activity`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: user.id,
+        action: 'booking_created',
+        details: {
+          booking_id: booking.id,
+          service_type: booking.service_type,
+          status: booking.status,
+          total_amount: booking.total_amount,
+        },
+      }),
+    })
+
+    if (!logResponse.ok) {
+      console.error('Failed to log activity:', await logResponse.text())
+    }
+
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({
+        success: true,
+        data: booking,
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: error.message.includes('authorization') ? 401 : 400
+        status: 201,
       }
-    );
+    )
+  } catch (error) {
+    console.error('Error:', error)
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error.message,
+        error_type: error instanceof z.ZodError ? 'validation' : 'server'
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: error.message.includes('Authentication') ? 401 : 400,
+      }
+    )
   }
-});
+})

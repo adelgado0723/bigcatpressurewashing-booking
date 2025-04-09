@@ -37,15 +37,32 @@ export function BookingConfirmation() {
 
     const fetchBooking = async () => {
       try {
-        // If we have a payment intent, update the booking status first
-        if (paymentIntentId) {
-          await supabase.updateBookingPayment(bookingId, paymentIntentId, 'succeeded');
+        const { data: { session } } = await supabase.auth.getSession();
+        const authHeader = session?.access_token 
+          ? `Bearer ${session.access_token}` 
+          : `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`;
+
+        const endpoint = paymentIntentId
+          ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/confirm-payment?bookingId=${bookingId}&paymentIntentId=${paymentIntentId}`
+          : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-booking?id=${bookingId}`;
+
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch booking details');
         }
 
-        // Fetch the booking details
-        const data = await supabase.getBooking(bookingId);
+        const { data } = await response.json();
         setBooking(data);
       } catch (error: any) {
+        console.error('Error fetching booking:', error);
         setError(error.message);
       } finally {
         setLoading(false);

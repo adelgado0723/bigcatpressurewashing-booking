@@ -26,20 +26,25 @@ export const supabase = {
     }>;
     totalAmount: number;
   }) => {
-    const { error } = await client.from('quotes').insert({
-      email: data.email || null,
-      services: data.services.map(service => ({
-        service_type: services.find(s => s.id === service.serviceType)?.name,
-        material: service.material,
-        size: service.size,
-        stories: service.stories,
-        roof_pitch: service.roofPitch,
-        price: service.price
-      })),
-      total_amount: data.totalAmount
+    const response = await fetch(`${supabaseUrl}/functions/v1/log-quote`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      },
+      body: JSON.stringify({
+        email: data.email,
+        services: data.services,
+        totalAmount: data.totalAmount
+      }),
     });
 
-    if (error) throw error;
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to log quote');
+    }
+
+    return response.json();
   },
   createBooking: async (data: {
     email: string;
@@ -55,11 +60,11 @@ export const supabase = {
     isGuest: boolean;
   }) => {
     const { data: { session } } = await client.auth.getSession();
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-booking`, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/create-booking`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
       },
       body: JSON.stringify({
         customer_email: data.email,
