@@ -1,28 +1,3 @@
-// Declare Deno namespace for TypeScript
-declare const Deno: {
-  env: {
-    get(key: string): string | undefined;
-  };
-};
-
-import { SupabaseClient } from '@supabase/supabase-js';
-
-export interface Env {
-  get(key: string): string | undefined;
-}
-
-export const env: Env = {
-  get: (key: string): string | undefined => {
-    return Deno.env.get(key);
-  }
-};
-
-interface RateLimitResult {
-  allowed: boolean;
-  remaining: number;
-  reset: number;
-}
-
 /**
  * Normalizes an IP address for consistent rate limiting
  * Handles IPv4, IPv6, and X-Forwarded-For headers
@@ -37,55 +12,6 @@ function normalizeIp(ip: string): string {
   ip = ip.split(':')[0];
 
   return ip;
-}
-
-/**
- * Creates a rate limit key combining domain and IP
- */
-function createRateLimitKey(domain: string, ip: string): string {
-  return `${domain}:${normalizeIp(ip)}`;
-}
-
-export async function checkRateLimit(
-  key: string,
-  limit: number = 60,  // Default: 60 requests
-  window: number = 60000,  // Default: per minute
-  supabaseClient: SupabaseClient
-): Promise<RateLimitResult> {
-  const now = Date.now();
-  const windowStart = now - window;
-
-  const { data, error } = await supabaseClient
-    .from('rate_limits')
-    .select('count')
-    .eq('key', key)
-    .gte('timestamp', new Date(windowStart).toISOString())
-    .single();
-
-  if (error) {
-    // In case of database error, allow the request but with full limit
-    // This prevents blocking legitimate users due to database issues
-    return { allowed: true, remaining: limit, reset: now + window };
-  }
-
-  const count = data?.count ?? 0;
-  const remaining = Math.max(0, limit - count);
-  const reset = now + window;
-
-  if (count >= limit) {
-    return { allowed: false, remaining, reset };
-  }
-
-  // Update or insert rate limit record
-  await supabaseClient
-    .from('rate_limits')
-    .upsert({
-      key,
-      count: count + 1,
-      timestamp: new Date().toISOString()
-    });
-
-  return { allowed: true, remaining: remaining - 1, reset };
 }
 
 // Rate limiter implementation
