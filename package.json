@@ -11,10 +11,18 @@
         "test": "cd supabase/functions && deno test --allow-net --allow-env shared/rate-limiter.test.ts",
         "test:no-check": "cd supabase/functions && deno test --allow-net --allow-env --no-check shared/rate-limiter.test.ts",
         "supabase:login": "node_modules/supabase/bin/supabase login",
-        "supabase:link": "node_modules/supabase/bin/supabase link --project-ref your-project-ref",
+        "supabase:link": "node_modules/supabase/bin/supabase link --project-ref qdosyrwwnvngeqohhjrq",
         "supabase:deploy": "node_modules/supabase/bin/supabase functions deploy",
-        "supabase:deploy:all": "node_modules/supabase/bin/supabase functions deploy --all",
-        "supabase:deploy:rate-limiter": "node_modules/supabase/bin/supabase functions deploy rate-limiter"
+        "supabase:deploy:all": "npm run supabase:deploy:confirm-payment && npm run supabase:deploy:create-booking && npm run supabase:deploy:get-booking && npm run supabase:deploy:log-activity && npm run supabase:deploy:log-quote && npm run supabase:deploy:confirm-email && npm run supabase:deploy:create-payment-intent && npm run supabase:deploy:notify-slack && npm run supabase:deploy:send-booking-confirmation",
+        "supabase:deploy:confirm-payment": "node_modules/supabase/bin/supabase functions deploy confirm-payment",
+        "supabase:deploy:create-booking": "node_modules/supabase/bin/supabase functions deploy create-booking",
+        "supabase:deploy:get-booking": "node_modules/supabase/bin/supabase functions deploy get-booking",
+        "supabase:deploy:log-activity": "node_modules/supabase/bin/supabase functions deploy log-activity",
+        "supabase:deploy:log-quote": "node_modules/supabase/bin/supabase functions deploy log-quote",
+        "supabase:deploy:confirm-email": "node_modules/supabase/bin/supabase functions deploy confirm-email",
+        "supabase:deploy:create-payment-intent": "node_modules/supabase/bin/supabase functions deploy create-payment-intent",
+        "supabase:deploy:notify-slack": "node_modules/supabase/bin/supabase functions deploy notify-slack",
+        "supabase:deploy:send-booking-confirmation": "node_modules/supabase/bin/supabase functions deploy send-booking-confirmation"
     },
     "dependencies": {
         "@stripe/react-stripe-js": "^3.0.7",
