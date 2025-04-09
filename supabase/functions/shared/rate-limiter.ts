@@ -1,10 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
-
-declare namespace Deno {
-  const env: {
+// Declare Deno namespace for TypeScript
+declare const Deno: {
+  env: {
     get(key: string): string | undefined;
   };
+};
+
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+export interface Env {
+  get(key: string): string | undefined;
 }
+
+export const env: Env = {
+  get: (key: string): string | undefined => {
+    return Deno.env.get(key);
+  }
+};
 
 interface RateLimitResult {
   allowed: boolean;
@@ -15,13 +26,9 @@ interface RateLimitResult {
 export async function checkRateLimit(
   key: string,
   limit: number,
-  window: number
+  window: number,
+  supabaseClient: SupabaseClient
 ): Promise<RateLimitResult> {
-  const supabaseClient = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-  );
-
   const now = Date.now();
   const windowStart = now - window;
 
@@ -54,4 +61,43 @@ export async function checkRateLimit(
     });
 
   return { allowed: true, remaining: remaining - 1, reset };
+}
+
+// Rate limiter implementation
+export class RateLimiter {
+  private requests: Map<string, { count: number; timestamp: number }>;
+  private readonly limit: number;
+  private readonly window: number;
+
+  constructor(limit: number = 1, window: number = 100) {
+    this.requests = new Map();
+    this.limit = limit;
+    this.window = window;
+  }
+
+  public check(ip: string): boolean {
+    const now = Date.now();
+    const request = this.requests.get(ip);
+
+    if (!request) {
+      this.requests.set(ip, { count: 1, timestamp: now });
+      return true;
+    }
+
+    if (now - request.timestamp > this.window) {
+      this.requests.set(ip, { count: 1, timestamp: now });
+      return true;
+    }
+
+    if (request.count >= this.limit) {
+      return false;
+    }
+
+    this.requests.set(ip, { count: request.count + 1, timestamp: request.timestamp });
+    return true;
+  }
+
+  public reset(): void {
+    this.requests.clear();
+  }
 } 

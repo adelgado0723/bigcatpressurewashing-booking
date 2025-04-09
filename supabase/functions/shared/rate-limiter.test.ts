@@ -1,211 +1,151 @@
 // @deno-types="npm:@supabase/supabase-js@2.39.7"
-import { createClient } from '@supabase/supabase-js';
-import { assertEquals, assertNotEquals } from "https://deno.land/std@0.208.0/testing/asserts.ts";
+import { SupabaseClient } from '@supabase/supabase-js';
+import { RateLimiter, checkRateLimit } from './rate-limiter.ts';
+import { assertEquals } from "std/assert/mod.ts";
 
-// Mock Deno namespace
-declare global {
-  namespace Deno {
-    export const env: {
-      get(key: string): string | undefined;
-      set(key: string, value: string): void;
+// Mock Supabase client with different scenarios
+class MockSupabaseClient {
+  private errorMode = false;
+  private highCount = false;
+
+  constructor(options?: { errorMode?: boolean; highCount?: boolean }) {
+    this.errorMode = options?.errorMode ?? false;
+    this.highCount = options?.highCount ?? false;
+  }
+
+  from(_table: string) {
+    return {
+      select: (_column: string) => ({
+        eq: (_key: string, _value: string) => ({
+          gte: (_column: string, _value: string) => ({
+            single: () => Promise.resolve(
+              this.errorMode 
+                ? { data: null, error: new Error('Database error') }
+                : { data: { count: this.highCount ? 5 : 0 }, error: null }
+            )
+          })
+        }),
+        single: () => Promise.resolve(
+          this.errorMode 
+            ? { data: null, error: new Error('Database error') }
+            : { data: { count: this.highCount ? 5 : 0 }, error: null }
+        )
+      }),
+      upsert: (_data: unknown) => Promise.resolve(
+        this.errorMode 
+          ? { data: null, error: new Error('Database error') }
+          : { data: null, error: null }
+      )
     };
-    export function test(options: {
-      name: string;
-      sanitizeOps?: boolean;
-      sanitizeResources?: boolean;
-      fn: (t: TestContext) => Promise<void> | void;
-    }): void;
   }
 }
 
-interface TestContext {
-  step(name: string, fn: () => Promise<void> | void): Promise<void>;
-}
+Deno.test('RateLimiter - Basic functionality', () => {
+  const rateLimiter = new RateLimiter(1, 100);
+  const clientIp = '127.0.0.1';
 
-// Test setup
-const TEST_SUPABASE_URL = 'https://test.supabase.co';
-const TEST_SUPABASE_KEY = 'test-key';
+  // First request should be allowed
+  assertEquals(rateLimiter.check(clientIp), true);
 
-// Mock rate limiter state
-const rateLimitState = new Map<string, { count: number; timestamp: string }>();
+  // Second request within time window should be blocked
+  assertEquals(rateLimiter.check(clientIp), false);
+});
 
-// Mock Supabase client with state tracking
-const mockSupabase = {
-  from: (table: string) => ({
-    select: () => ({
-      eq: (field: string, value: string) => ({
-        gte: (field: string, value: string) => ({
-          single: async () => {
-            // Simulate database error for empty key
-            if (!value) {
-              return { data: null, error: { message: "Database error" } };
-            }
-            const state = rateLimitState.get(value);
-            if (!state) {
-              return { data: null, error: null };
-            }
-            return {
-              data: { count: state.count },
-              error: null
-            };
-          }
-        })
-      })
-    }),
-    upsert: async (data: { key: string; count: number; timestamp: string }) => {
-      if (!data.key) {
-        return { error: { message: "Database error" } };
-      }
-      rateLimitState.set(data.key, { count: data.count, timestamp: data.timestamp });
-      return { error: null };
-    }
-  })
-};
+Deno.test('RateLimiter - Different IPs', () => {
+  const rateLimiter = new RateLimiter(1, 100);
+  const ip1 = '127.0.0.1';
+  const ip2 = '192.168.1.1';
 
-// Mock the rate-limiter module with state tracking
-const mockRateLimiter = {
-  checkRateLimit: async (key: string, limit: number, window: number) => {
-    if (limit <= 0) {
-      return { allowed: true, remaining: 1, reset: Date.now() + window };
-    }
+  // Both IPs should be allowed initially
+  assertEquals(rateLimiter.check(ip1), true);
+  assertEquals(rateLimiter.check(ip2), true);
 
-    const now = Date.now();
-    const windowStart = now - window;
+  // Both IPs should be blocked on second request
+  assertEquals(rateLimiter.check(ip1), false);
+  assertEquals(rateLimiter.check(ip2), false);
+});
 
-    // Handle database error case for empty key
-    if (!key) {
-      return { allowed: true, remaining: limit, reset: now + window };
-    }
+Deno.test('RateLimiter - Reset functionality', () => {
+  const rateLimiter = new RateLimiter(1, 100);
+  const clientIp = '127.0.0.1';
 
-    const state = rateLimitState.get(key);
-    const count = state?.count ?? 0;
-    const timestamp = state?.timestamp ? new Date(state.timestamp).getTime() : 0;
+  // First request should be allowed
+  assertEquals(rateLimiter.check(clientIp), true);
 
-    // Check if we're in a new window
-    if (timestamp < windowStart) {
-      rateLimitState.delete(key);
-      const newState = { count: 1, timestamp: new Date().toISOString() };
-      rateLimitState.set(key, newState);
-      return { allowed: true, remaining: limit - 1, reset: now + window };
-    }
+  // Reset the rate limiter
+  rateLimiter.reset();
 
-    // Check if we've hit the limit
-    if (count >= limit) {
-      return { allowed: false, remaining: 0, reset: timestamp + window };
-    }
+  // Request should be allowed again after reset
+  assertEquals(rateLimiter.check(clientIp), true);
+});
 
-    // Increment the counter
-    const newCount = count + 1;
-    rateLimitState.set(key, { count: newCount, timestamp: new Date().toISOString() });
-    return { allowed: true, remaining: limit - newCount, reset: timestamp + window };
-  }
-};
+Deno.test('RateLimiter - Edge cases', () => {
+  const rateLimiter = new RateLimiter(1, 100);
 
-Deno.test({
-  name: "Rate Limiter Test Suite",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  async fn(t) {
-    // Set up test environment
-    Deno.env.set('SUPABASE_URL', TEST_SUPABASE_URL);
-    Deno.env.set('SUPABASE_ANON_KEY', TEST_SUPABASE_KEY);
+  // Test with empty IP
+  assertEquals(rateLimiter.check(''), true);
 
-    // Clear rate limit state before each test
-    await t.step("setup", () => {
-      rateLimitState.clear();
-    });
+  // Test with invalid IP
+  assertEquals(rateLimiter.check('invalid-ip'), true);
 
-    // Basic functionality tests
-    await t.step("should allow first request within limit", async () => {
-      const result = await mockRateLimiter.checkRateLimit('test-key-1', 5, 60000);
-      assertEquals(result.allowed, true);
-      assertEquals(result.remaining, 4);
-      assertNotEquals(result.reset, 0);
-    });
+  // Test with very long IP
+  const longIp = 'x'.repeat(1000);
+  assertEquals(rateLimiter.check(longIp), true);
+});
 
-    await t.step("should track multiple requests correctly", async () => {
-      const key = 'test-key-2';
-      const limit = 3;
-      const window = 60000;
+Deno.test('RateLimiter - Custom limits', () => {
+  const rateLimiter = new RateLimiter(3, 1000); // 3 requests per second
+  const clientIp = '127.0.0.1';
 
-      // First request
-      const result1 = await mockRateLimiter.checkRateLimit(key, limit, window);
-      assertEquals(result1.allowed, true);
-      assertEquals(result1.remaining, 2);
+  // First three requests should be allowed
+  assertEquals(rateLimiter.check(clientIp), true);
+  assertEquals(rateLimiter.check(clientIp), true);
+  assertEquals(rateLimiter.check(clientIp), true);
 
-      // Second request
-      const result2 = await mockRateLimiter.checkRateLimit(key, limit, window);
-      assertEquals(result2.allowed, true);
-      assertEquals(result2.remaining, 1);
+  // Fourth request should be blocked
+  assertEquals(rateLimiter.check(clientIp), false);
+});
 
-      // Third request
-      const result3 = await mockRateLimiter.checkRateLimit(key, limit, window);
-      assertEquals(result3.allowed, true);
-      assertEquals(result3.remaining, 0);
+Deno.test('checkRateLimit - Basic functionality', async () => {
+  const mockClient = new MockSupabaseClient() as unknown as SupabaseClient;
+  const result = await checkRateLimit('test-key', 1, 100, mockClient);
+  
+  assertEquals(result.allowed, true);
+  assertEquals(result.remaining, 0);
+  assertEquals(typeof result.reset, 'number');
+});
 
-      // Fourth request (should be blocked)
-      const result4 = await mockRateLimiter.checkRateLimit(key, limit, window);
-      assertEquals(result4.allowed, false);
-      assertEquals(result4.remaining, 0);
-    });
+Deno.test('checkRateLimit - Database error handling', async () => {
+  const mockClient = new MockSupabaseClient({ errorMode: true }) as unknown as SupabaseClient;
+  const result = await checkRateLimit('test-key', 1, 100, mockClient);
+  
+  assertEquals(result.allowed, true);
+  assertEquals(result.remaining, 1);
+  assertEquals(typeof result.reset, 'number');
+});
 
-    await t.step("should reset after window expires", async () => {
-      const key = 'test-key-3';
-      const limit = 2;
-      const window = 1000; // 1 second window for testing
+Deno.test('checkRateLimit - Rate limit exceeded', async () => {
+  const mockClient = new MockSupabaseClient({ highCount: true }) as unknown as SupabaseClient;
+  const result = await checkRateLimit('test-key', 1, 100, mockClient);
+  
+  assertEquals(result.allowed, false);
+  assertEquals(result.remaining, 0);
+  assertEquals(typeof result.reset, 'number');
+});
 
-      // First request
-      const result1 = await mockRateLimiter.checkRateLimit(key, limit, window);
-      assertEquals(result1.allowed, true);
+Deno.test('RateLimiter - Time window expiration', async () => {
+  const rateLimiter = new RateLimiter(1, 100);
+  const clientIp = '127.0.0.1';
 
-      // Wait for window to expire
-      await new Promise(resolve => setTimeout(resolve, window + 100));
+  // First request should be allowed
+  assertEquals(rateLimiter.check(clientIp), true);
 
-      // Request after window expires
-      const result2 = await mockRateLimiter.checkRateLimit(key, limit, window);
-      assertEquals(result2.allowed, true);
-      assertEquals(result2.remaining, 1);
-    });
+  // Second request should be blocked
+  assertEquals(rateLimiter.check(clientIp), false);
 
-    await t.step("should handle concurrent requests", async () => {
-      const key = 'test-key-4';
-      const limit = 5;
-      const window = 60000;
+  // Wait for the time window to expire
+  await new Promise(resolve => setTimeout(resolve, 150));
 
-      // Make 5 concurrent requests
-      const promises = Array(5).fill(null).map(() => 
-        mockRateLimiter.checkRateLimit(key, limit, window)
-      );
-
-      const results = await Promise.all(promises);
-      
-      // All requests should be allowed but with decreasing remaining counts
-      results.forEach((result, index) => {
-        assertEquals(result.allowed, true);
-        assertEquals(result.remaining, 4 - index);
-      });
-
-      // Next request should be blocked
-      const blockedResult = await mockRateLimiter.checkRateLimit(key, limit, window);
-      assertEquals(blockedResult.allowed, false);
-    });
-
-    await t.step("should handle invalid inputs gracefully", async () => {
-      // Test with negative limit
-      const negativeResult = await mockRateLimiter.checkRateLimit('test-key-5', -1, 60000);
-      assertEquals(negativeResult.allowed, true);
-      assertEquals(negativeResult.remaining, 1);
-
-      // Test with zero window
-      const zeroWindowResult = await mockRateLimiter.checkRateLimit('test-key-6', 5, 0);
-      assertEquals(zeroWindowResult.allowed, true);
-    });
-
-    await t.step("should handle database errors gracefully", async () => {
-      // Force a database error by using an invalid key
-      const result = await mockRateLimiter.checkRateLimit('', 5, 60000);
-      assertEquals(result.allowed, true);
-      assertEquals(result.remaining, 5);
-    });
-  },
+  // Request should be allowed after window expiration
+  assertEquals(rateLimiter.check(clientIp), true);
 }); 

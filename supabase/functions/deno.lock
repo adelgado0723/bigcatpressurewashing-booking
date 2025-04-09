@@ -126,8 +126,7 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:@supabase/supabase-js@2.39.7",
-      "npm:stripe@13.6.0"
+      "npm:@supabase/supabase-js@2.39.7"
     ]
   }
 }
