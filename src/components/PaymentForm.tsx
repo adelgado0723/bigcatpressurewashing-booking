@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
-import { Lock, CreditCard } from 'lucide-react';
+import { Lock, CreditCard, DollarSign, ArrowLeft } from 'lucide-react';
 import { LoadingSpinner } from './LoadingSpinner';
 import {
   Elements,
@@ -24,6 +24,22 @@ function CheckoutForm({ bookingId, amount, onSuccess, onError }: PaymentFormProp
   const elements = useElements();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [booking, setBooking] = useState<any>(null);
+  const [totalAmount, setTotalAmount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const getBookingDetails = async () => {
+      try {
+        const bookingData = await supabase.getBooking(bookingId);
+        setBooking(bookingData);
+        setTotalAmount(bookingData.total_amount);
+      } catch (error) {
+        console.error("Error fetching booking details:", error);
+      }
+    };
+
+    getBookingDetails();
+  }, [bookingId]);
 
   useEffect(() => {
     if (!stripe) {
@@ -84,8 +100,60 @@ function CheckoutForm({ bookingId, amount, onSuccess, onError }: PaymentFormProp
     }
   };
 
+  const formatPrice = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(value);
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="text-gray-600 hover:text-gray-800 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h2 className="text-2xl font-semibold text-gray-800">
+          Payment Details
+        </h2>
+      </div>
+
+      {/* Price Summary Card */}
+      <div className="bg-blue-50 rounded-lg p-6 mb-6 border border-blue-100">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+          <DollarSign className="w-5 h-5 mr-2 text-blue-600" />
+          Order Summary
+        </h3>
+        
+        <div className="space-y-2 mb-4">
+          <div className="flex justify-between">
+            <span className="text-gray-600">Deposit Amount:</span>
+            <span className="font-medium">{formatPrice(amount)}</span>
+          </div>
+          
+          {totalAmount && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Total Service Price:</span>
+              <span className="font-medium">{formatPrice(totalAmount)}</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="pt-4 border-t border-blue-200">
+          <div className="flex justify-between text-lg font-semibold">
+            <span>Due Now:</span>
+            <span className="text-blue-700">{formatPrice(amount)}</span>
+          </div>
+          <p className="text-sm text-gray-500 mt-2">
+            The remaining balance will be due upon service completion.
+          </p>
+        </div>
+      </div>
+
       <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
         <div className="flex items-center gap-2 text-gray-600 mb-6">
           <Lock className="w-4 h-4" />
@@ -116,12 +184,12 @@ function CheckoutForm({ bookingId, amount, onSuccess, onError }: PaymentFormProp
       >
         {loading ? (
           <>
-            <LoadingSpinner />
+            <LoadingSpinner size="sm" />
             Processing Payment...
           </>
         ) : (
           <>
-            Pay ${amount.toFixed(2)}
+            Pay {formatPrice(amount)}
             <Lock className="w-4 h-4" />
           </>
         )}

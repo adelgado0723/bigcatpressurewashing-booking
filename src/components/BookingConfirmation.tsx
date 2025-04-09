@@ -7,13 +7,16 @@ import { format } from 'date-fns';
 
 interface BookingDetails {
   id: string;
-  created_at: string;
   customer_email: string;
   customer_name: string | null;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
   total_amount: number;
   deposit_amount: number;
-  status: string;
-  stripe_payment_status: string;
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  created_at: string;
 }
 
 export function BookingConfirmation() {
@@ -36,26 +39,11 @@ export function BookingConfirmation() {
       try {
         // If we have a payment intent, update the booking status first
         if (paymentIntentId) {
-          const { error: updateError } = await supabase
-            .from('bookings')
-            .update({
-              stripe_payment_status: 'succeeded',
-              status: 'confirmed'
-            })
-            .eq('id', bookingId)
-            .eq('stripe_payment_intent_id', paymentIntentId);
-
-          if (updateError) throw updateError;
+          await supabase.updateBookingPayment(bookingId, paymentIntentId, 'succeeded');
         }
 
         // Fetch the booking details
-        const { data, error } = await supabase
-          .from('bookings')
-          .select('*')
-          .eq('id', bookingId)
-          .single();
-
-        if (error) throw error;
+        const data = await supabase.getBooking(bookingId);
         setBooking(data);
       } catch (error: any) {
         setError(error.message);
@@ -77,140 +65,103 @@ export function BookingConfirmation() {
 
   if (error || !booking) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-12">
-        <div className="max-w-lg mx-auto px-4">
-          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-semibold text-gray-800 mb-4">
-              Something went wrong
-            </h2>
-            <p className="text-gray-600 mb-6">
-              {error || 'Unable to find booking details'}
-            </p>
-            <Link
-              to="/"
-              className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 mr-2" />
-              Return Home
-            </Link>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center">
+        <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg">
+          <div className="flex items-center justify-center mb-6">
+            <XCircle className="w-16 h-16 text-red-500" />
           </div>
+          <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Something went wrong</h1>
+          <p className="text-center text-gray-600 mb-6">{error || 'Unable to retrieve booking details'}</p>
+          <Link to="/" className="block text-center bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+            Return Home
+          </Link>
         </div>
       </div>
     );
   }
 
-  const isPaymentSuccessful = booking.stripe_payment_status === 'succeeded';
-  console.log(JSON.stringify(booking));
+  const formatPrice = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(value);
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-12">
-      <div className="max-w-2xl mx-auto px-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="text-center mb-8">
-            {isPaymentSuccessful ? (
-              <>
-                <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-semibold text-gray-800 mb-2">
-                  Booking Confirmed!
-                </h2>
-                <p className="text-gray-600">
-                  Thank you for choosing Big Cat Pressure Washing
-                </p>
-              </>
-            ) : (
-              <>
-                <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-semibold text-gray-800 mb-2">
-                  Payment Failed
-                </h2>
-                <p className="text-gray-600">
-                  There was an issue processing your payment
-                </p>
-              </>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            <div className="border-t border-b py-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                Booking Details
-              </h3>
-              <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-sm text-gray-600">Booking Reference</dt>
-                  <dd className="text-gray-800 font-medium">{booking.id}</dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-gray-600">Date</dt>
-                  <dd className="text-gray-800 font-medium">
-                    {format(new Date(booking.created_at), 'PPP')}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-gray-600">Customer</dt>
-                  <dd className="text-gray-800 font-medium">
-                    {booking.customer_name || booking.customer_email}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-gray-600">Total Amount</dt>
-                  <dd className="text-gray-800 font-medium">
-                    ${booking.total_amount.toFixed(2)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-gray-600">Deposit Paid</dt>
-                  <dd className="text-gray-800 font-medium">
-                    ${booking.deposit_amount.toFixed(2)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-gray-600">Status</dt>
-                  <dd className={`font-medium ${
-                    isPaymentSuccessful ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            {isPaymentSuccessful ? (
-              <div className="bg-green-50 p-4 rounded-lg">
-                <p className="text-green-800 text-sm">
-                  We'll contact you shortly to schedule your service.
-                  If you have any questions, please contact us at support@bigcatpressurewashing.com
-                </p>
-              </div>
-            ) : (
-              <div className="bg-red-50 p-4 rounded-lg">
-                <p className="text-red-800 text-sm">
-                  Please try booking again or contact us at support@bigcatpressurewashing.com for assistance.
-                </p>
-              </div>
-            )}
-
-            <div className="flex justify-between items-center pt-4">
-              <Link
-                to="/"
-                className="inline-flex items-center text-gray-600 hover:text-gray-800"
-              >
-                <ArrowLeft className="w-5 h-5 mr-2" />
-                Return Home
-              </Link>
-              {isPaymentSuccessful && (
-                <Link
-                  to="/history"
-                  className="inline-flex items-center text-blue-600 hover:text-blue-800"
-                >
-                  <Calendar className="w-5 h-5 mr-2" />
-                  View Bookings
-                </Link>
-              )}
-            </div>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center">
+      <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg">
+        <div className="flex items-center justify-center mb-6">
+          <CheckCircle2 className="w-16 h-16 text-green-500" />
         </div>
+        <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Booking Confirmed!</h1>
+        <p className="text-center text-gray-600 mb-6">
+          Your booking has been successfully created and your deposit has been processed.
+        </p>
+
+        <div className="border-t border-gray-200 pt-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Booking Details</h2>
+          <dl className="space-y-3">
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Booking ID:</dt>
+              <dd className="text-gray-800 font-medium">{booking.id.substring(0, 8)}</dd>
+            </div>
+
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Date:</dt>
+              <dd className="text-gray-800 font-medium">
+                {format(new Date(booking.created_at), 'MMMM d, yyyy')}
+              </dd>
+            </div>
+
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Status:</dt>
+              <dd className="text-gray-800 font-medium capitalize">
+                {booking.status}
+              </dd>
+            </div>
+
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Location:</dt>
+              <dd className="text-gray-800 font-medium">
+                {booking.city}, {booking.state}
+              </dd>
+            </div>
+
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Total Amount:</dt>
+              <dd className="text-gray-800 font-medium">
+                {formatPrice(booking.total_amount)}
+              </dd>
+            </div>
+
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Deposit Paid:</dt>
+              <dd className="text-gray-800 font-medium">
+                {formatPrice(booking.deposit_amount)}
+              </dd>
+            </div>
+
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Balance Due:</dt>
+              <dd className="text-gray-800 font-medium">
+                {formatPrice(booking.total_amount - booking.deposit_amount)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="bg-green-50 p-4 rounded-lg border border-green-100 mb-6">
+          <p className="text-sm text-green-800">
+            <strong>Next Steps:</strong> Our team will contact you within 24-48 hours to confirm your booking details and schedule your service.
+          </p>
+        </div>
+
+        <Link to="/" className="block text-center bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+          <div className="flex items-center justify-center gap-2">
+            <ArrowLeft className="w-4 h-4" />
+            Return to Home
+          </div>
+        </Link>
       </div>
     </div>
   );

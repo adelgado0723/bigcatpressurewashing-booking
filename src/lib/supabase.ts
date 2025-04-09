@@ -89,5 +89,27 @@ export const supabase = {
     }
 
     return response.json();
+  },
+  getBooking: async (id: string) => {
+    const { data, error } = await client
+      .from('bookings')
+      .select('*')
+      .eq('id', id)
+      .single();
+      
+    if (error) throw error;
+    return data;
+  },
+  updateBookingPayment: async (bookingId: string, paymentIntentId: string, status: string) => {
+    const { error } = await client
+      .from('bookings')
+      .update({
+        stripe_payment_status: status,
+        status: status === 'succeeded' ? 'confirmed' : 'pending'
+      })
+      .eq('id', bookingId)
+      .eq('stripe_payment_intent_id', paymentIntentId);
+      
+    if (error) throw error;
   }
 };
