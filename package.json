@@ -10,9 +10,11 @@
         "preview": "vite preview",
         "test": "cd supabase/functions && deno test --allow-net --allow-env shared/rate-limiter.test.ts",
         "test:no-check": "cd supabase/functions && deno test --allow-net --allow-env --no-check shared/rate-limiter.test.ts",
-        "supabase:deploy": "node_modules/supabase/bin/supabase functions deploy --project-ref your-project-ref",
-        "supabase:deploy:all": "node_modules/supabase/bin/supabase functions deploy --project-ref your-project-ref --all",
-        "supabase:deploy:rate-limiter": "node_modules/supabase/bin/supabase functions deploy rate-limiter --project-ref your-project-ref"
+        "supabase:login": "node_modules/supabase/bin/supabase login",
+        "supabase:link": "node_modules/supabase/bin/supabase link --project-ref your-project-ref",
+        "supabase:deploy": "node_modules/supabase/bin/supabase functions deploy",
+        "supabase:deploy:all": "node_modules/supabase/bin/supabase functions deploy --all",
+        "supabase:deploy:rate-limiter": "node_modules/supabase/bin/supabase functions deploy rate-limiter"
     },
     "dependencies": {
         "@stripe/react-stripe-js": "^3.0.7",
