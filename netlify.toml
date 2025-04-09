@@ -1,0 +1,15 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  
+[build.environment]
+  NODE_VERSION = "18" # You can adjust this to match your preferred Node.js version
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  
+# Uncomment if you want to use Netlify Functions
+# [functions]
+#   directory = "netlify/functions" 
