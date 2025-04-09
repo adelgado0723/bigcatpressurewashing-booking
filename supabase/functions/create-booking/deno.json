@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.39.7",
+    "zod": "npm:zod@3.22.4",
+    "std/": "https://deno.land/std@0.168.0/",
+    "stripe": "npm:stripe@13.6.0"
+  },
+  "tasks": {
+    "start": "deno run --allow-net --allow-env index.ts"
+  }
+} 
