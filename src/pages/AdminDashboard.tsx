@@ -17,7 +17,14 @@ import { format, formatDistanceToNow } from 'date-fns';
 interface QuoteAnalytics {
   id: string;
   email: string;
-  services: any[];
+  services: Array<{
+    serviceId: string;
+    material: string;
+    size: string;
+    stories: string;
+    roofPitch: string;
+    price: number;
+  }>;
   total_amount: number;
   quote_time: string;
   converted_to_booking: boolean;
@@ -39,7 +46,7 @@ interface ConversionMetrics {
 }
 
 export function AdminDashboard() {
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<{ user: { id: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [droppedQuotes, setDroppedQuotes] = useState<QuoteAnalytics[]>([]);
@@ -61,7 +68,7 @@ export function AdminDashboard() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const checkAdminStatus = async (session: any) => {
+  const checkAdminStatus = async (session: { user: { id: string } } | null) => {
     if (!session) {
       setIsAdmin(false);
       setLoading(false);
@@ -69,8 +76,7 @@ export function AdminDashboard() {
     }
 
     try {
-      const { data: user, error } = await supabase
-        .from('users')
+      const { data: user, error } = await supabase.from('users')
         .select('role')
         .eq('id', session.user.id)
         .single();
@@ -90,8 +96,7 @@ export function AdminDashboard() {
       setRefreshing(true);
 
       // Fetch dropped quotes
-      const { data: dropped, error: droppedError } = await supabase
-        .from('quote_analytics')
+      const { data: dropped, error: droppedError } = await supabase.from('quote_analytics')
         .select('*')
         .eq('converted_to_booking', false)
         .order('quote_time', { ascending: false });
@@ -100,8 +105,7 @@ export function AdminDashboard() {
       setDroppedQuotes(dropped || []);
 
       // Fetch pending deposits
-      const { data: pending, error: pendingError } = await supabase
-        .from('quote_analytics')
+      const { data: pending, error: pendingError } = await supabase.from('quote_analytics')
         .select('*')
         .eq('converted_to_booking', true)
         .eq('deposit_paid', false)
@@ -111,8 +115,7 @@ export function AdminDashboard() {
       setPendingDeposits(pending || []);
 
       // Fetch conversion metrics
-      const { data: metricsData, error: metricsError } = await supabase
-        .from('conversion_metrics')
+      const { data: metricsData, error: metricsError } = await supabase.from('conversion_metrics')
         .select('*')
         .order('date', { ascending: false })
         .limit(30);

@@ -4,13 +4,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContactForm } from '../ContactForm';
 import { ServiceQuote } from '../../types';
 
+interface MockServiceQuote {
+  serviceId: string;
+  material: string;
+  size: string;
+  stories: string;
+  roofPitch: string;
+  price: number;
+}
+
 // Mock supabase module first to avoid hoisting issues
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     logQuote: vi.fn().mockResolvedValue({ data: null, error: null }),
     createBooking: vi.fn().mockResolvedValue({ data: null, error: null }),
     getBooking: vi.fn().mockResolvedValue({ data: null, error: null }),
-    updateBookingPayment: vi.fn().mockResolvedValue({ data: null, error: null })
+    updateBookingPayment: vi.fn().mockResolvedValue({ data: null, error: null }),
+    from: vi.fn().mockReturnValue({
+      insert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      select: vi.fn().mockResolvedValue({ data: null, error: null }),
+      update: vi.fn().mockResolvedValue({ data: null, error: null })
+    })
   }
 }));
 

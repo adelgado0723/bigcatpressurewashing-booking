@@ -10,6 +10,21 @@ else
     exit 1
 fi
 
+echo "Running TypeScript build check..."
+npm run build
+if [ $? -eq 0 ]; then
+    echo "✅ TypeScript build passed"
+else
+    echo "❌ TypeScript build failed"
+    exit 1
+fi
 
-npm run lint
+
+echo "Running tests..."
 npm run test
+if [ $? -eq 0 ]; then
+    echo "✅ Tests passed"
+else
+    echo "❌ Tests failed"
+    exit 1
+fi

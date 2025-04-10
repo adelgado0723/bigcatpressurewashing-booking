@@ -3,8 +3,8 @@ import type { Database } from '../database.types';
 import { services } from '../../constants';
 import { ServiceQuote } from '../../types';
 
-class SupabaseService {
-  private client;
+export class SupabaseService {
+  private client: SupabaseClient;
 
   constructor() {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -21,8 +21,8 @@ class SupabaseService {
     return this.client.auth;
   }
 
-  get from() {
-    return this.client.from;
+  from(table: string) {
+    return this.client.from(table);
   }
 
   async logQuote(data: {
