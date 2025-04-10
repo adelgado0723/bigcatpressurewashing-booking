@@ -1,1 +1,15 @@
-npm run test && npm run lint
+# this file is very basic and has no logging
+# let's add error handling and logging
+
+echo "Running linting checks..."
+npm run lint
+if [ $? -eq 0 ]; then
+    echo "✅ Linting passed"
+else
+    echo "❌ Linting failed"
+    exit 1
+fi
+
+
+npm run lint
+npm run test

@@ -4,12 +4,14 @@ import { ServiceQuote } from '../../types';
 import { formatPrice, getServiceSummary } from '../../lib/utils';
 
 interface AuthPromptProps {
+  onClose: () => void;
   serviceQuotes: ServiceQuote[];
-  totalPrice: number;
-  onContinueAsGuest: () => void;
 }
 
-export function AuthPrompt({ serviceQuotes, totalPrice, onContinueAsGuest }: AuthPromptProps) {
+export const AuthPrompt: React.FC<AuthPromptProps> = ({
+  onClose,
+  serviceQuotes
+}) => {
   return (
     <div className="text-center space-y-6">
       <h2 className="text-2xl font-semibold text-gray-800">
@@ -28,7 +30,7 @@ export function AuthPrompt({ serviceQuotes, totalPrice, onContinueAsGuest }: Aut
       </p>
       <div className="flex gap-4 justify-center">
         <button
-          onClick={onContinueAsGuest}
+          onClick={onClose}
           className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
           Continue as Guest
@@ -43,4 +45,4 @@ export function AuthPrompt({ serviceQuotes, totalPrice, onContinueAsGuest }: Aut
       </div>
     </div>
   );
-}
+};

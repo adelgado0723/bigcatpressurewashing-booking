@@ -10,6 +10,9 @@ export interface Service {
   baseRate: number;
   minimum: number;
   unit: string;
+  materialMultipliers?: MaterialMultiplier;
+  storyMultipliers?: StoriesMultiplier;
+  roofPitchMultipliers?: RoofPitchMultiplier;
 }
 
 export interface ServiceQuote {

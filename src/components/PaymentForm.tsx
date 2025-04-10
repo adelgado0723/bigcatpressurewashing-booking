@@ -26,6 +26,7 @@ function CheckoutForm({ bookingId, amount, onSuccess, onError }: PaymentFormProp
   const [error, setError] = useState<string | null>(null);
   const [booking, setBooking] = useState<any>(null);
   const [totalAmount, setTotalAmount] = useState<number | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const getBookingDetails = async () => {
@@ -55,7 +56,7 @@ function CheckoutForm({ bookingId, amount, onSuccess, onError }: PaymentFormProp
       stripe.retrievePaymentIntent(clientSecret).then(({ paymentIntent }) => {
         switch (paymentIntent?.status) {
           case 'succeeded':
-            onSuccess();
+            setPaymentStatus('succeeded');
             break;
           case 'processing':
             setError('Your payment is processing.');
@@ -70,6 +71,12 @@ function CheckoutForm({ bookingId, amount, onSuccess, onError }: PaymentFormProp
       });
     }
   }, [stripe]);
+
+  useEffect(() => {
+    if (paymentStatus === 'succeeded') {
+      onSuccess();
+    }
+  }, [paymentStatus, onSuccess]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -234,7 +241,7 @@ export function PaymentForm(props: PaymentFormProps) {
     };
 
     initializePayment();
-  }, [props.bookingId, props.amount]);
+  }, [props.bookingId, props.amount, props.onError]);
 
   if (!clientSecret) {
     return (

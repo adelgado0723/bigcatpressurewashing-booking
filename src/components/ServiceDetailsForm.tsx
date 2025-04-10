@@ -78,10 +78,11 @@ export function ServiceDetailsForm({
       
       {service.materialRequired && (
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="material" className="block text-sm font-medium text-gray-700 mb-2">
             Surface Material
           </label>
           <select
+            id="material"
             value={material}
             onChange={(e) => onMaterialChange(e.target.value)}
             className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
@@ -104,10 +105,11 @@ export function ServiceDetailsForm({
 
       {service.id === 'roof' && (
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="roofPitch" className="block text-sm font-medium text-gray-700 mb-2">
             Roof Pitch
           </label>
           <select
+            id="roofPitch"
             value={roofPitch}
             onChange={(e) => onRoofPitchChange(e.target.value as keyof RoofPitchMultiplier)}
             className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
@@ -129,10 +131,11 @@ export function ServiceDetailsForm({
 
       {(service.id === 'house' || service.id === 'gutter') && (
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="stories" className="block text-sm font-medium text-gray-700 mb-2">
             Number of Stories
           </label>
           <select
+            id="stories"
             value={stories}
             onChange={(e) => onStoriesChange(e.target.value as '1' | '2' | '3')}
             className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
@@ -151,10 +154,11 @@ export function ServiceDetailsForm({
       )}
 
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="size" className="block text-sm font-medium text-gray-700 mb-2">
           Size ({service.unit})
         </label>
         <input
+          id="size"
           type="number"
           value={size}
           onChange={(e) => onSizeChange(e.target.value)}

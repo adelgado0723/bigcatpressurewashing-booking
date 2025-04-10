@@ -1,107 +1,138 @@
-import { RateLimiter } from "./rate-limiter.ts";
+import { describe, it, expect, vi } from 'vitest';
+import { RateLimiter } from './rate-limiter';
 
-declare global {
-  const Deno: {
-    test: (name: string, fn: () => Promise<void> | void) => void;
-  };
-}
+describe('RateLimiter', () => {
+  it('should limit requests based on window size', () => {
+    const rateLimiter = new RateLimiter(5, 1000); // 5 requests per second
+    const ip = '127.0.0.1';
 
-// Basic functionality test
-Deno.test("RateLimiter - Basic functionality", () => {
-  const rateLimiter = new RateLimiter(5, 1000); // 5 requests per second
-  const ip = "127.0.0.1";
+    // First 5 requests should be allowed
+    for (let i = 0; i < 5; i++) {
+      expect(rateLimiter.check(ip)).toBe(true);
+    }
 
-  // First request should be allowed
-  let result = rateLimiter.check(ip);
-  if (result !== true) throw new Error("First request should be allowed");
+    // 6th request should be blocked
+    expect(rateLimiter.check(ip)).toBe(false);
+  });
 
-  // Second request should be allowed
-  result = rateLimiter.check(ip);
-  if (result !== true) throw new Error("Second request should be allowed");
+  it('should handle different IPs independently', () => {
+    const rateLimiter = new RateLimiter(2, 1000);
+    const ip1 = '127.0.0.1';
+    const ip2 = '127.0.0.2';
 
-  // Third request should be allowed
-  result = rateLimiter.check(ip);
-  if (result !== true) throw new Error("Third request should be allowed");
+    // Both IPs should be allowed initially
+    expect(rateLimiter.check(ip1)).toBe(true);
+    expect(rateLimiter.check(ip2)).toBe(true);
 
-  // Fourth request should be allowed
-  result = rateLimiter.check(ip);
-  if (result !== true) throw new Error("Fourth request should be allowed");
+    // Second request for both IPs should be allowed
+    expect(rateLimiter.check(ip1)).toBe(true);
+    expect(rateLimiter.check(ip2)).toBe(true);
 
-  // Fifth request should be allowed
-  result = rateLimiter.check(ip);
-  if (result !== true) throw new Error("Fifth request should be allowed");
+    // Third request for both IPs should be blocked
+    expect(rateLimiter.check(ip1)).toBe(false);
+    expect(rateLimiter.check(ip2)).toBe(false);
+  });
 
-  // Sixth request should be blocked
-  result = rateLimiter.check(ip);
-  if (result !== false) throw new Error("Sixth request should be blocked");
-});
+  it('should handle edge cases', () => {
+    const rateLimiter = new RateLimiter(1, 1000);
 
-// Different IPs test
-Deno.test("RateLimiter - Different IPs", () => {
-  const rateLimiter = new RateLimiter(2, 1000); // 2 requests per second
-  const ip1 = "127.0.0.1";
-  const ip2 = "127.0.0.2";
+    // Test empty IP
+    expect(rateLimiter.check('')).toBe(true);
+    expect(rateLimiter.check('')).toBe(false);
 
-  // Both IPs should be allowed initially
-  let result1 = rateLimiter.check(ip1);
-  let result2 = rateLimiter.check(ip2);
-  if (result1 !== true) throw new Error("First request for IP1 should be allowed");
-  if (result2 !== true) throw new Error("First request for IP2 should be allowed");
+    // Test IP with port
+    expect(rateLimiter.check('127.0.0.1:8080')).toBe(true);
+    expect(rateLimiter.check('127.0.0.1:8080')).toBe(false);
 
-  // Second request for both IPs should be allowed
-  result1 = rateLimiter.check(ip1);
-  result2 = rateLimiter.check(ip2);
-  if (result1 !== true) throw new Error("Second request for IP1 should be allowed");
-  if (result2 !== true) throw new Error("Second request for IP2 should be allowed");
+    // Test X-Forwarded-For header
+    const xForwardedFor = '203.0.113.1, 192.168.1.1, 10.0.0.1';
+    expect(rateLimiter.check(xForwardedFor)).toBe(true);
+    expect(rateLimiter.check(xForwardedFor)).toBe(false);
+  });
 
-  // Third request for both IPs should be blocked
-  result1 = rateLimiter.check(ip1);
-  result2 = rateLimiter.check(ip2);
-  if (result1 !== false) throw new Error("Third request for IP1 should be blocked");
-  if (result2 !== false) throw new Error("Third request for IP2 should be blocked");
-});
+  it('should reset properly', () => {
+    const rateLimiter = new RateLimiter(1, 1000);
+    const ip = '127.0.0.1';
 
-// Edge cases test
-Deno.test("RateLimiter - Edge cases", () => {
-  const rateLimiter = new RateLimiter(1, 1000); // 1 request per second
+    expect(rateLimiter.check(ip)).toBe(true);
+    expect(rateLimiter.check(ip)).toBe(false);
 
-  // Test empty IP
-  let result = rateLimiter.check("");
-  if (result !== true) throw new Error("First request with empty IP should be allowed");
-  result = rateLimiter.check("");
-  if (result !== false) throw new Error("Second request with empty IP should be blocked");
+    rateLimiter.reset();
+    expect(rateLimiter.check(ip)).toBe(true);
+  });
 
-  // Test IP with port
-  result = rateLimiter.check("127.0.0.1:8080");
-  if (result !== true) throw new Error("First request with port should be allowed");
-  result = rateLimiter.check("127.0.0.1:8080");
-  if (result !== false) throw new Error("Second request with port should be blocked");
+  it('should handle time window expiration', async () => {
+    const rateLimiter = new RateLimiter(2, 1000);
+    const ip = '127.0.0.1';
 
-  // Test X-Forwarded-For header
-  const xForwardedFor = "203.0.113.1, 192.168.1.1, 10.0.0.1";
-  result = rateLimiter.check(xForwardedFor);
-  if (result !== true) throw new Error("First request with X-Forwarded-For should be allowed");
-  result = rateLimiter.check(xForwardedFor);
-  if (result !== false) throw new Error("Second request with X-Forwarded-For should be blocked");
-});
+    expect(rateLimiter.check(ip)).toBe(true);
+    expect(rateLimiter.check(ip)).toBe(true);
+    expect(rateLimiter.check(ip)).toBe(false);
 
-// Reset functionality test
-Deno.test("RateLimiter - Reset functionality", () => {
-  const rateLimiter = new RateLimiter(1, 1000); // 1 request per second
-  const ip = "127.0.0.1";
+    // Mock Date.now to simulate time passing
+    const originalNow = Date.now;
+    Date.now = vi.fn(() => originalNow() + 1100);
 
-  // First request should be allowed
-  let result = rateLimiter.check(ip);
-  if (result !== true) throw new Error("First request should be allowed");
+    expect(rateLimiter.check(ip)).toBe(true);
 
-  // Second request should be blocked
-  result = rateLimiter.check(ip);
-  if (result !== false) throw new Error("Second request should be blocked");
+    // Restore Date.now
+    Date.now = originalNow;
+  });
 
-  // Reset the limiter
-  rateLimiter.reset();
+  it('should handle high request limits', () => {
+    const rateLimiter = new RateLimiter(1000, 1000);
+    const ip = '127.0.0.1';
 
-  // Request after reset should be allowed
-  result = rateLimiter.check(ip);
-  if (result !== true) throw new Error("Request after reset should be allowed");
+    for (let i = 0; i < 1000; i++) {
+      expect(rateLimiter.check(ip)).toBe(true);
+    }
+
+    expect(rateLimiter.check(ip)).toBe(false);
+  });
+
+  it('should handle IPv6 addresses', () => {
+    const rateLimiter = new RateLimiter(2, 1000);
+    const ipv6 = '2001:0db8:85a3:0000:0000:8a2e:0370:7334';
+
+    expect(rateLimiter.check(ipv6)).toBe(true);
+    expect(rateLimiter.check(ipv6)).toBe(true);
+    expect(rateLimiter.check(ipv6)).toBe(false);
+  });
+
+  it('should handle invalid IP formats', () => {
+    const rateLimiter = new RateLimiter(2, 1000);
+    const invalidIps = [
+      '256.256.256.256',
+      '2001:0db8:85a3:0000:0000:8a2e:0370:7334:1234',
+      'not.an.ip',
+      '127.0.0.1.2',
+      '127.0.0',
+    ];
+
+    for (const ip of invalidIps) {
+      expect(rateLimiter.check(ip)).toBe(true);
+      expect(rateLimiter.check(ip)).toBe(true);
+      expect(rateLimiter.check(ip)).toBe(false);
+    }
+  });
+
+  it('should handle concurrent requests', async () => {
+    const rateLimiter = new RateLimiter(10, 1000);
+    const ip = '127.0.0.1';
+    const requests = 20;
+    const results: boolean[] = [];
+
+    const promises = Array(requests).fill(null).map(() => 
+      new Promise<void>(resolve => {
+        const result = rateLimiter.check(ip);
+        results.push(result);
+        resolve();
+      })
+    );
+
+    await Promise.all(promises);
+
+    const allowedCount = results.filter(r => r).length;
+    expect(allowedCount).toBe(10);
+  });
 });

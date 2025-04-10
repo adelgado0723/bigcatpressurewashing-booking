@@ -26,17 +26,44 @@ CREATE TABLE IF NOT EXISTS quotes (
   deposit_paid_at timestamptz
 );
 
--- Enable RLS
-ALTER TABLE quotes ENABLE ROW LEVEL SECURITY;
+-- Enable RLS if not already enabled
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_tables 
+    WHERE tablename = 'quotes' 
+    AND rowsecurity = true
+  ) THEN
+    ALTER TABLE quotes ENABLE ROW LEVEL SECURITY;
+  END IF;
+END $$;
 
--- Create policies
-CREATE POLICY "Anyone can insert quotes"
-  ON quotes
-  FOR INSERT
-  WITH CHECK (true);
+-- Create policies if they don't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_policies 
+    WHERE tablename = 'quotes' 
+    AND policyname = 'Anyone can insert quotes'
+  ) THEN
+    CREATE POLICY "Anyone can insert quotes"
+      ON quotes
+      FOR INSERT
+      WITH CHECK (true);
+  END IF;
 
-CREATE POLICY "Only authenticated users can view quotes"
-  ON quotes
-  FOR SELECT
-  TO authenticated
-  USING (true);
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_policies 
+    WHERE tablename = 'quotes' 
+    AND policyname = 'Only authenticated users can view quotes'
+  ) THEN
+    CREATE POLICY "Only authenticated users can view quotes"
+      ON quotes
+      FOR SELECT
+      TO authenticated
+      USING (true);
+  END IF;
+END $$;

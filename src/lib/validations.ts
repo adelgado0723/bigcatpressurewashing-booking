@@ -12,7 +12,12 @@ export const serviceDetailsSchema = z.object({
 
 export const contactSchema = z.object({
   email: z.string().email('Invalid email address'),
-  phone: z.string().optional(),
+  phone: z.string()
+    .optional()
+    .refine(
+      (val) => !val || /^\(\d{3}\) \d{3}-\d{4}$/.test(val),
+      'Invalid phone number format'
+    ),
   name: z.string().optional(),
   address: z.string().min(1, 'Address is required'),
   city: z.string().min(1, 'City is required'),

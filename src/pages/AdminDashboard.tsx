@@ -150,7 +150,7 @@ export function AdminDashboard() {
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-semibold text-gray-800 mb-2">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to view this page.</p>
+          <p className="text-gray-600">You don&apos;t have permission to view this page.</p>
         </div>
       </div>
     );

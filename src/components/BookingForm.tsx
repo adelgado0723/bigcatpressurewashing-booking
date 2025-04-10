@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { ServiceQuote, RoofPitchMultiplier } from '../types';
-import { services, buildingMaterials, roofMaterials, roofPitchMultipliers, storiesMultipliers } from '../constants';
+import { ServiceQuote, RoofPitchMultiplier, Service } from '../types';
+import { buildingMaterials, roofMaterials, roofPitchMultipliers, storiesMultipliers } from '../constants';
 import { ProgressSteps } from './ProgressSteps';
 import { ServiceCard } from './ServiceCard';
 import { ServiceQuoteList } from './ServiceQuoteList';
@@ -11,61 +11,63 @@ import { useToast } from '../hooks/useToast';
 import { Link } from 'react-router-dom';
 import { History, Mail, Lock, RefreshCw } from 'lucide-react';
 import { LoadingSpinner } from './LoadingSpinner';
-import { AuthPrompt } from './auth/AuthPrompt';
+import { AuthPrompt } from './AuthPrompt';
 import { SocialAuth } from './auth/SocialAuth';
+import { useBookingContext } from '../contexts/BookingContext';
 
-function calculatePrice(
+const calculatePrice = (
   service: Service,
-  material: string,
+  material: string | undefined,
   size: string,
-  stories: string,
-  roofPitch: keyof RoofPitchMultiplier
-): number {
-  const basePrice = service.baseRate * parseFloat(size);
-  let multiplier = 1;
-
-  if (service.materialRequired && material) {
-    if (service.id === 'house') {
-      multiplier *= buildingMaterials[material as keyof typeof buildingMaterials];
-    } else if (service.id === 'roof') {
-      multiplier *= roofMaterials[material as keyof typeof roofMaterials];
-    }
+  stories: string | undefined,
+  roofPitch: string | undefined
+): number => {
+  const sizeNum = parseFloat(size || '0');
+  if (isNaN(sizeNum) || sizeNum <= 0) {
+    return service.minimum;
   }
 
-  if (service.id === 'house' || service.id === 'gutter') {
-    multiplier *= storiesMultipliers[stories as keyof typeof storiesMultipliers];
+  let price = sizeNum * service.rate;
+
+  if (material && service.materialMultipliers?.[material]) {
+    price *= service.materialMultipliers[material];
   }
 
-  if (service.id === 'roof') {
-    multiplier *= roofPitchMultipliers[roofPitch];
+  if (stories && service.storyMultipliers?.[stories]) {
+    price *= service.storyMultipliers[stories];
   }
 
-  const finalPrice = basePrice * multiplier;
-  return Math.max(finalPrice, service.minimum);
-}
+  if (roofPitch && service.roofPitchMultipliers?.[roofPitch]) {
+    price *= service.roofPitchMultipliers[roofPitch];
+  }
 
-function getTotalPrice(quotes: ServiceQuote[]): number | null {
+  return Math.max(price, service.minimum);
+};
+
+function getTotalPrice(quotes: ServiceQuote[], services: Service[]): number | null {
   const total = quotes.reduce((sum, quote) => sum + quote.price, 0);
   return total >= Math.min(...services.map((s) => s.minimum)) ? total : null;
 }
 
-export function BookingForm() {
-  const [selectedService, setSelectedService] = useState<string | null>(null);
-  const [material, setMaterial] = useState<string>('');
+export const BookingForm: React.FC = () => {
+  const { services, loading, error } = useBookingContext();
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedMaterial, setSelectedMaterial] = useState<string>('');
   const [size, setSize] = useState<string>('');
+  const [stories, setStories] = useState<'1' | '2' | '3'>('1');
+  const [roofPitch, setRoofPitch] = useState<'low pitch' | 'medium pitch' | 'high pitch'>('low pitch');
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [step, setStep] = useState<'details' | 'auth' | 'contact'>('details');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [quotes, setQuotes] = useState<ServiceQuote[]>([]);
   const [email, setEmail] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [name, setName] = useState<string>('');
-  const [stories, setStories] = useState<'1' | '2' | '3'>('1');
-  const [roofPitch, setRoofPitch] = useState<keyof RoofPitchMultiplier>('low pitch');
-  const [step, setStep] = useState<number>(1);
-  const [serviceQuotes, setServiceQuotes] = useState<ServiceQuote[]>([]);
   const [address, setAddress] = useState<string>('');
   const [city, setCity] = useState<string>('');
   const [state, setState] = useState<string>('');
   const [zip, setZip] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
@@ -80,8 +82,8 @@ export function BookingForm() {
   const { showToast } = useToast();
 
   const handleServiceSelect = (serviceId: string) => {
-    setSelectedService(serviceId);
-    setStep(2);
+    setSelectedService(services.find((s) => s.id === serviceId) || null);
+    setStep('details');
   };
 
   useEffect(() => {
@@ -134,8 +136,8 @@ export function BookingForm() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    setFormLoading(true);
+    setFormError(null);
     setShowResendButton(false);
 
     try {
@@ -178,10 +180,10 @@ export function BookingForm() {
         setShowAuthForm(false);
       }
     } catch (error: any) {
-      setError(error.message);
+      setFormError(error.message);
       showToast(error.message, 'error');
     } finally {
-      setLoading(false);
+      setFormLoading(false);
     }
   };
 
@@ -198,6 +200,33 @@ export function BookingForm() {
   const handleContinueAsGuest = () => {
     setIsGuest(true);
     setShowAuthForm(false);
+  };
+
+  const handleAddService = () => {
+    if (!selectedService) return;
+    
+    const quote: ServiceQuote = {
+      serviceId: selectedService.id,
+      material: selectedMaterial || undefined,
+      size: size.toString(),
+      stories: selectedService.name.toLowerCase().includes('roof') ? stories : undefined,
+      roofPitch: selectedService.name.toLowerCase().includes('roof') ? roofPitch : undefined,
+      price: calculatePrice(
+        selectedService,
+        selectedMaterial || undefined,
+        size.toString(),
+        selectedService.name.toLowerCase().includes('roof') ? stories : undefined,
+        selectedService.name.toLowerCase().includes('roof') ? roofPitch : undefined
+      )
+    };
+
+    setQuotes([...quotes, quote]);
+    setSelectedService(null);
+    setSelectedMaterial('');
+    setSize('');
+    setStories('1');
+    setRoofPitch('low pitch');
+    setStep('details');
   };
 
   if (authLoading) {
@@ -240,143 +269,34 @@ export function BookingForm() {
             Professional Pressure Washing Services
           </h1>
           <p className="text-lg text-blue-700">
-            Experience the Big Cat difference - bringing out the best in your property
+            Get a free quote for our professional pressure washing services
           </p>
         </header>
 
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white rounded-xl shadow-lg p-8">
           <ProgressSteps currentStep={step} />
-
-          {showAuthForm ? (
-            <div className="max-w-md mx-auto">
-              <h2 className="text-2xl font-semibold text-gray-800 mb-6 text-center">
-                {isSignUp ? 'Create an Account' : 'Welcome Back'}
-              </h2>
-              
-              <div className="mb-8">
-                <SocialAuth redirectTo={window.location.origin} />
-              </div>
-
-              <div className="relative mb-8">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">Or continue with email</span>
-                </div>
-              </div>
-
-              <form onSubmit={handleAuth} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4" />
-                      Email
-                    </div>
-                  </label>
-                  <input
-                    type="email"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <div className="flex items-center gap-2">
-                      <Lock className="w-4 h-4" />
-                      Password
-                    </div>
-                  </label>
-                  <input
-                    type="password"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    required
-                  />
-                </div>
-                {error && <p className="text-red-600 text-sm">{error}</p>}
-                {showResendButton && (
-                  <button
-                    type="button"
-                    onClick={handleResendConfirmation}
-                    disabled={resendLoading || signupDisabled}
-                    className="w-full bg-blue-100 text-blue-700 py-2 px-4 rounded-lg hover:bg-blue-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {resendLoading ? (
-                      <>
-                        <LoadingSpinner />
-                        Resending...
-                      </>
-                    ) : signupDisabled ? (
-                      <>
-                        <RefreshCw className="w-4 h-4" />
-                        Resend available in {countdown}s
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-4 h-4" />
-                        Resend Confirmation Email
-                      </>
-                    )}
-                  </button>
-                )}
-                <div className="flex gap-4">
-                  <button
-                    type="button"
-                    onClick={handleContinueAsGuest}
-                    className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Continue as Guest
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading || (isSignUp && signupDisabled)}
-                    className="flex-1 bg-blue-600 text-white py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400"
-                  >
-                    {loading ? (
-                      <>
-                        <LoadingSpinner />
-                        {isSignUp ? 'Creating Account...' : 'Signing In...'}
-                      </>
-                    ) : isSignUp && signupDisabled ? (
-                      `Wait ${countdown}s`
-                    ) : (
-                      isSignUp ? 'Create Account' : 'Sign In'
-                    )}
-                  </button>
-                </div>
-              </form>
-              <div className="mt-4 text-center">
-                <button
-                  onClick={() => {
-                    setIsSignUp(!isSignUp);
-                    setError(null);
-                    setShowResendButton(false);
-                  }}
-                  className="text-blue-600 hover:text-blue-800 text-sm"
-                >
-                  {isSignUp
-                    ? 'Already have an account? Sign in'
-                    : "Don't have an account? Sign up"}
-                </button>
-              </div>
+          
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <LoadingSpinner className="w-8 h-8 text-blue-600" />
+            </div>
+          ) : error ? (
+            <div className="text-center text-red-600">
+              {error}
             </div>
           ) : (
             <>
-              {step === 1 && (
+              {step === 'details' && (
                 <div className="space-y-6">
                   <h2 className="text-2xl font-semibold text-gray-800 mb-6">
                     Select a Service
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {services.map((service) => (
+                    {services?.map((service) => (
                       <ServiceCard
                         key={service.id}
                         service={service}
-                        isSelected={selectedService === service.id}
+                        isSelected={selectedService?.id === service.id}
                         onSelect={() => handleServiceSelect(service.id)}
                       />
                     ))}
@@ -384,47 +304,32 @@ export function BookingForm() {
                 </div>
               )}
 
-              {step === 2 && selectedService && (
+              {step === 'details' && selectedService && (
                 <ServiceDetailsForm
-                  service={services.find((s) => s.id === selectedService)!}
-                  material={material}
+                  service={selectedService}
+                  material={selectedMaterial}
                   size={size}
                   stories={stories}
                   roofPitch={roofPitch}
-                  onMaterialChange={setMaterial}
+                  onMaterialChange={setSelectedMaterial}
                   onSizeChange={setSize}
                   onStoriesChange={setStories}
                   onRoofPitchChange={setRoofPitch}
                   onCancel={() => {
                     setSelectedService(null);
-                    setStep(1);
+                    setStep('details');
                   }}
-                  onAdd={() => {
-                    const service = services.find((s) => s.id === selectedService)!;
-                    const quote: ServiceQuote = {
-                      serviceId: selectedService,
-                      material: service.materialRequired ? material : undefined,
-                      size,
-                      stories: service.id === 'house' || service.id === 'gutter' ? stories : undefined,
-                      roofPitch: service.id === 'roof' ? roofPitch : undefined,
-                      price: calculatePrice(service, material, size, stories, roofPitch),
-                    };
-                    setServiceQuotes([...serviceQuotes, quote]);
-                    setSelectedService(null);
-                    setMaterial('');
-                    setSize('');
-                    setStep(1);
-                  }}
+                  onAdd={handleAddService}
                 />
               )}
 
-              {serviceQuotes.length > 0 && step !== 3 && (
+              {quotes.length > 0 && step !== 'contact' && (
                 <ServiceQuoteList
-                  quotes={serviceQuotes}
+                  quotes={quotes}
                   onRemove={(index) => {
-                    setServiceQuotes(serviceQuotes.filter((_, i) => i !== index));
+                    setQuotes(quotes.filter((_, i) => i !== index));
                   }}
-                  onContinue={() => setStep(3)}
+                  onContinue={() => setStep('contact')}
                   showPrices={false}
                   formatPrice={(price) =>
                     new Intl.NumberFormat('en-US', {
@@ -432,11 +337,11 @@ export function BookingForm() {
                       currency: 'USD',
                     }).format(price)
                   }
-                  getTotalPrice={() => getTotalPrice(serviceQuotes)}
+                  getTotalPrice={() => getTotalPrice(quotes, services)}
                   getServiceSummary={(quote) => {
                     const service = services.find((s) => s.id === quote.serviceId);
                     if (!service) return '';
-                    let summary = `${service.name} - ${quote.size} ${service.unit}`;
+                    let summary = service.name;
                     if (quote.material) summary += ` (${quote.material})`;
                     if (quote.stories) summary += ` - ${quote.stories} stories`;
                     if (quote.roofPitch) summary += ` - ${quote.roofPitch}`;
@@ -445,14 +350,10 @@ export function BookingForm() {
                 />
               )}
 
-              {step === 3 && (
+              {step === 'contact' && (
                 <>
                   {!session && !isGuest ? (
-                    <AuthPrompt
-                      serviceQuotes={serviceQuotes}
-                      totalPrice={getTotalPrice(serviceQuotes)!}
-                      onContinueAsGuest={handleContinueAsGuest}
-                    />
+                    <AuthPrompt onContinueAsGuest={handleContinueAsGuest} />
                   ) : (
                     <ContactForm
                       email={email}
@@ -462,10 +363,10 @@ export function BookingForm() {
                       city={city}
                       state={state}
                       zip={zip}
-                      loading={loading}
-                      error={error}
+                      loading={formLoading}
+                      error={formError}
                       session={session}
-                      serviceQuotes={serviceQuotes}
+                      serviceQuotes={quotes}
                       onEmailChange={setEmail}
                       onPhoneChange={setPhone}
                       onNameChange={setName}
@@ -473,18 +374,18 @@ export function BookingForm() {
                       onCityChange={setCity}
                       onStateChange={setState}
                       onZipChange={setZip}
-                      onBack={() => setStep(2)}
+                      onBack={() => setStep('details')}
                       formatPrice={(price) =>
                         new Intl.NumberFormat('en-US', {
                           style: 'currency',
                           currency: 'USD',
                         }).format(price)
                       }
-                      getTotalPrice={() => getTotalPrice(serviceQuotes)}
+                      getTotalPrice={() => getTotalPrice(quotes, services)}
                       getServiceSummary={(quote) => {
                         const service = services.find((s) => s.id === quote.serviceId);
                         if (!service) return '';
-                        let summary = `${service.name} - ${quote.size} ${service.unit}`;
+                        let summary = service.name;
                         if (quote.material) summary += ` (${quote.material})`;
                         if (quote.stories) summary += ` - ${quote.stories} stories`;
                         if (quote.roofPitch) summary += ` - ${quote.roofPitch}`;
@@ -501,4 +402,4 @@ export function BookingForm() {
       </div>
     </div>
   );
-}
+};

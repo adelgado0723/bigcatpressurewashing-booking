@@ -8,8 +8,9 @@
     "build": "tsc && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "cd supabase/functions && deno test --allow-net --allow-env --no-check shared/rate-limiter.test.ts",
-    "test:coverage": "cd supabase/functions && deno test --allow-net --allow-env --no-check --coverage=coverage shared/rate-limiter.test.ts && deno coverage coverage",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
     "test:no-check": "cd supabase/functions && deno test --allow-net --allow-env --no-check shared/rate-limiter.test.ts",
     "supabase:login": "node_modules/.bin/supabase login",
     "supabase:link": "node_modules/.bin/supabase link --project-ref qdosyrwwnvngeqohhjrq",
@@ -25,6 +26,7 @@
     "supabase:deploy:notify-slack": "node_modules/.bin/supabase functions deploy notify-slack",
     "supabase:deploy:send-booking-confirmation": "node_modules/.bin/supabase functions deploy send-booking-confirmation",
     "supabase:deploy:rate-limiter": "node_modules/.bin/supabase functions deploy rate-limiter",
+    "supabase:db:push": "node_modules/.bin/supabase db push --include-all --db-url \"postgresql://postgres.qdosyrwwnvngeqohhjrq:G4dCLAHzYDNXHM2U@aws-0-us-east-1.pooler.supabase.com:5432/postgres\"",
     "prepare": "husky"
   },
   "dependencies": {
@@ -43,6 +45,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^14.3.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@typescript-eslint/eslint-plugin": "^7.2.0",
@@ -54,10 +59,12 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.19",
     "husky": "^9.1.7",
+    "jsdom": "^24.1.3",
     "postcss": "^8.4.35",
     "supabase": "^2.20.12",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^1.6.1"
   }
 }

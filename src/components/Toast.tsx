@@ -1,44 +1,69 @@
 import React, { useEffect } from 'react';
-import { AlertCircle, CheckCircle2, X } from 'lucide-react';
-
-export type ToastType = 'success' | 'error';
+import { X } from 'lucide-react';
 
 interface ToastProps {
   message: string;
-  type: ToastType;
+  type: 'success' | 'error' | 'warning' | 'info';
   onClose: () => void;
   duration?: number;
+  icon?: React.ReactNode;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+  className?: string;
 }
 
-export function Toast({ message, type, onClose, duration = 5000 }: ToastProps) {
+export function Toast({
+  message,
+  type,
+  onClose,
+  duration = 5000,
+  icon,
+  action,
+  className = ''
+}: ToastProps) {
   useEffect(() => {
-    const timer = setTimeout(() => {
-      onClose();
-    }, duration);
-
-    return () => clearTimeout(timer);
+    if (duration > 0) {
+      const timer = setTimeout(onClose, duration);
+      return () => clearTimeout(timer);
+    }
   }, [duration, onClose]);
+
+  const typeClasses = {
+    success: 'bg-green-50 border-green-500 text-green-800',
+    error: 'bg-red-50 border-red-500 text-red-800',
+    warning: 'bg-yellow-50 border-yellow-500 text-yellow-800',
+    info: 'bg-blue-50 border-blue-500 text-blue-800'
+  };
 
   return (
     <div
-      className={`fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg animate-slide-up ${
-        type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-      }`}
       role="alert"
+      className={`fixed bottom-4 right-4 max-w-md p-4 rounded-lg border shadow-lg flex items-center justify-between ${typeClasses[type]} ${className}`}
+      style={{ maxWidth: '400px', textOverflow: 'ellipsis' }}
     >
-      {type === 'success' ? (
-        <CheckCircle2 className="w-5 h-5 text-green-500" />
-      ) : (
-        <AlertCircle className="w-5 h-5 text-red-500" />
-      )}
-      <p className="text-sm font-medium">{message}</p>
-      <button
-        onClick={onClose}
-        className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
-        aria-label="Close notification"
-      >
-        <X className="w-4 h-4" />
-      </button>
+      <div className="flex items-center gap-3">
+        {icon && <span className="flex-shrink-0">{icon}</span>}
+        <p className="text-sm">{message}</p>
+      </div>
+      <div className="flex items-center gap-2">
+        {action && (
+          <button
+            onClick={action.onClick}
+            className="text-sm font-medium hover:opacity-80"
+          >
+            {action.label}
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          className="p-1 hover:opacity-80"
+          aria-label="close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }

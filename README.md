@@ -21,7 +21,7 @@ A modern booking system for Big Cat Pressure Washing service.
 
 1. Clone the repository
    ```bash
-   git clone https://github.com/yourusername/bigcatpressurewashing-booking.git
+   git clone https://github.com/adelgado0723/bigcatpressurewashing-booking.git
    cd bigcatpressurewashing-booking
    ```
 
@@ -95,8 +95,4 @@ Make sure the following environment variables are set in your Supabase project:
 
 ## License
 
-[Your License]
-
-## Contact
-
-[Your Contact Information] 
+[Your License]  # TODO add license
