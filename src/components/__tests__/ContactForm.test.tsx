@@ -4,15 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContactForm } from '../ContactForm';
 import { ServiceQuote } from '../../types';
 
-interface MockServiceQuote {
-  serviceId: string;
-  material: string;
-  size: string;
-  stories: string;
-  roofPitch: string;
-  price: number;
-}
-
 // Mock supabase module first to avoid hoisting issues
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -46,9 +37,15 @@ vi.mock('../LoadingSpinner', () => ({
   LoadingSpinner: () => <div data-testid="loading-spinner">Loading...</div>,
 }));
 
+interface PaymentFormProps {
+  onSuccess: () => void;
+  bookingId: string;
+  amount: number;
+}
+
 // Mock PaymentForm to simulate successful payment flow
 vi.mock('../PaymentForm', () => ({
-  PaymentForm: ({ onSuccess, bookingId, amount }: { onSuccess: () => void; bookingId: string; amount: number }) => (
+  PaymentForm: ({ onSuccess, bookingId, amount }: PaymentFormProps) => (
     <div data-testid="payment-form" className="payment-form">
       <button onClick={onSuccess} role="button">Complete Payment</button>
       <div>Booking ID: {bookingId}</div>

@@ -45,8 +45,14 @@ interface ConversionMetrics {
   deposit_rate: number;
 }
 
+interface UserSession {
+  user: {
+    id: string;
+  };
+}
+
 export function AdminDashboard() {
-  const [session, setSession] = useState<{ user: { id: string } } | null>(null);
+  const [session, setSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [droppedQuotes, setDroppedQuotes] = useState<QuoteAnalytics[]>([]);
@@ -56,19 +62,19 @@ export function AdminDashboard() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      checkAdminStatus(session);
+      setSession(session as UserSession);
+      checkAdminStatus(session as UserSession);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      checkAdminStatus(session);
+      setSession(session as UserSession);
+      checkAdminStatus(session as UserSession);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const checkAdminStatus = async (session: { user: { id: string } } | null) => {
+  const checkAdminStatus = async (session: UserSession | null) => {
     if (!session) {
       setIsAdmin(false);
       setLoading(false);
@@ -84,7 +90,7 @@ export function AdminDashboard() {
       if (error) throw error;
       setIsAdmin(user?.role === 'admin');
     } catch (error) {
-      console.error('Error checking admin status:', error);
+      console.error('Error checking admin status:', error instanceof Error ? error.message : 'Unknown error');
       setIsAdmin(false);
     } finally {
       setLoading(false);
@@ -123,7 +129,7 @@ export function AdminDashboard() {
       if (metricsError) throw metricsError;
       setMetrics(metricsData || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching data:', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setRefreshing(false);
     }
@@ -134,6 +140,10 @@ export function AdminDashboard() {
       fetchData();
     }
   }, [isAdmin]);
+
+  const handleServiceType = (service: { serviceId: string; material: string; size: string; stories: string; roofPitch: string; price: number }) => {
+    return service.serviceId;
+  };
 
   if (loading) {
     return (
@@ -261,7 +271,7 @@ export function AdminDashboard() {
                       {quote.email}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {quote.services.map((s: any) => s.serviceType).join(', ')}
+                      {quote.services.map(handleServiceType).join(', ')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       ${quote.total_amount.toFixed(2)}
@@ -312,7 +322,7 @@ export function AdminDashboard() {
                       {booking.email}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {booking.services.map((s: any) => s.serviceType).join(', ')}
+                      {booking.services.map(handleServiceType).join(', ')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       ${booking.total_amount.toFixed(2)}
