@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { z } from 'zod'
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts'
 
 const authSchema = z.object({
   authorization: z.string().regex(/^Bearer .+$/),
