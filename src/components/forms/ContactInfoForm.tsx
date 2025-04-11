@@ -1,4 +1,3 @@
-import React from 'react';
 import { Mail, Phone, User, MapPin } from 'lucide-react';
 
 interface ContactInfoFormProps {

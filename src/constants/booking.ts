@@ -39,6 +39,5 @@ export const defaultBookingContext: BookingContextType = {
   setBookingDetails: () => {},
   isLoading: false,
   error: null,
-  fetchServices: async () => {},
-  loading: false
+  fetchServices: async () => {}
 }; 

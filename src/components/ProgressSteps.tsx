@@ -1,4 +1,3 @@
-import React from 'react';
 import { Home, Plus, User } from 'lucide-react';
 
 interface ProgressStepsProps {

@@ -1,4 +1,3 @@
-import React from 'react';
 import { ServiceQuote } from '../../types';
 import { formatPrice, getServiceSummary } from '../../lib/utils';
 

@@ -60,8 +60,8 @@ export interface BookingContextType {
   setServices: (services: Service[]) => void;
   selectedService: Service | null;
   setSelectedService: (service: Service | null) => void;
-  bookingDetails: Record<string, any>;
-  setBookingDetails: (details: Record<string, any>) => void;
+  bookingDetails: Record<string, string | number | boolean>;
+  setBookingDetails: (details: Record<string, string | number | boolean>) => void;
   isLoading: boolean;
   error: string | null;
   fetchServices: () => Promise<void>;

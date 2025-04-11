@@ -1,6 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { Toast } from '../Toast';
+import { describe, it, expect, vi } from 'vitest';
 
 describe('Toast', () => {
   it('renders success toast correctly', () => {

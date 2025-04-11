@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 import { services } from '../constants';
 import { ServiceQuote } from '../types';
@@ -12,20 +12,85 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const client = createClient<Database>(supabaseUrl, supabaseAnonKey);
 
-export const supabase = {
-  ...client,
-  logQuote: async (data: {
-    email: string;
-    services: Array<{
-      serviceType: string;
-      size: number;
-      material?: string;
-      stories?: number;
-      roofPitch?: string;
-      price: number;
-    }>;
-    totalAmount: number;
-  }) => {
+type LogQuoteData = {
+  email: string;
+  services: Array<{
+    serviceType: string;
+    size: number;
+    material?: string;
+    stories?: number;
+    roofPitch?: string;
+    price: number;
+  }>;
+  totalAmount: number;
+};
+
+type CreateBookingData = {
+  email: string;
+  phone?: string;
+  name?: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  totalAmount: number;
+  depositAmount: number;
+  services: ServiceQuote[];
+  isGuest: boolean;
+};
+
+type LogQuoteResponse = {
+  id: string;
+  email: string;
+  totalAmount: number;
+  created_at: string;
+};
+
+type CreateBookingResponse = {
+  id: string;
+  customer_email: string;
+  customer_phone: string | null;
+  customer_name: string | null;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  total_amount: number;
+  deposit_amount: number;
+  is_guest: boolean;
+  created_at: string;
+};
+
+type BookingResponse = {
+  id: string;
+  customer_email: string;
+  customer_phone: string | null;
+  customer_name: string | null;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  total_amount: number;
+  deposit_amount: number;
+  payment_intent_id: string | null;
+  payment_status: string | null;
+  is_guest: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type ExtendedSupabaseClient = SupabaseClient<Database> & {
+  logQuote: (data: LogQuoteData) => Promise<LogQuoteResponse>;
+  createBooking: (data: CreateBookingData) => Promise<CreateBookingResponse>;
+  getBooking: (id: string) => Promise<BookingResponse>;
+  updateBookingPayment: (bookingId: string, paymentIntentId: string, status: string) => Promise<BookingResponse>;
+};
+
+export const supabase = client as ExtendedSupabaseClient;
+
+// Add custom methods
+Object.assign(supabase, {
+  logQuote: async (data: LogQuoteData): Promise<LogQuoteResponse> => {
     const response = await fetch(`${supabaseUrl}/functions/v1/log-quote`, {
       method: 'POST',
       headers: {
@@ -46,19 +111,7 @@ export const supabase = {
 
     return response.json();
   },
-  createBooking: async (data: {
-    email: string;
-    phone?: string;
-    name?: string;
-    address: string;
-    city: string;
-    state: string;
-    zip: string;
-    totalAmount: number;
-    depositAmount: number;
-    services: ServiceQuote[];
-    isGuest: boolean;
-  }) => {
+  createBooking: async (data: CreateBookingData): Promise<CreateBookingResponse> => {
     const { data: { session } } = await client.auth.getSession();
     const response = await fetch(`${supabaseUrl}/functions/v1/create-booking`, {
       method: 'POST',
@@ -76,7 +129,7 @@ export const supabase = {
         zip: data.zip,
         total_amount: data.totalAmount,
         deposit_amount: data.depositAmount,
-        services: data.services.map(quote => ({
+        services: data.services.map((quote: ServiceQuote) => ({
           service_type: services.find(s => s.id === quote.serviceId)?.name,
           material: quote.material,
           size: quote.size ? parseFloat(quote.size) : 1,
@@ -95,7 +148,7 @@ export const supabase = {
 
     return response.json();
   },
-  getBooking: async (id: string) => {
+  getBooking: async (id: string): Promise<BookingResponse> => {
     const { data, error } = await client
       .from('bookings')
       .select('*')
@@ -105,16 +158,15 @@ export const supabase = {
     if (error) throw error;
     return data;
   },
-  updateBookingPayment: async (bookingId: string, paymentIntentId: string, status: string) => {
-    const { error } = await client
+  updateBookingPayment: async (bookingId: string, paymentIntentId: string, status: string): Promise<BookingResponse> => {
+    const { data, error } = await client
       .from('bookings')
-      .update({
-        stripe_payment_status: status,
-        status: status === 'succeeded' ? 'confirmed' : 'pending'
-      })
+      .update({ payment_intent_id: paymentIntentId, payment_status: status })
       .eq('id', bookingId)
-      .eq('stripe_payment_intent_id', paymentIntentId);
+      .select()
+      .single();
       
     if (error) throw error;
-  }
-};
+    return data;
+  },
+});

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Droplets, Home, CloudRain, Router as Gutter } from 'lucide-react';
 import { Service, RoofPitchMultiplier, StoriesMultiplier } from '../types';
 

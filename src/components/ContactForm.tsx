@@ -30,44 +30,37 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
     setError(null);
 
     try {
-      // First create the booking
-      const { data: booking, error: bookingError } = await supabase
-        .from('bookings')
-        .insert([
-          {
-            customer_name: formData.name,
-            customer_email: formData.email,
-            customer_phone: formData.phone,
-            address: formData.address,
-            city: formData.city,
-            state: formData.state,
-            zip: formData.zip,
-            service_quotes: services.map(service => ({
-              service_id: service.id,
-              service_name: service.name,
-              price: service.baseRate
-            })),
-            status: 'pending',
-            payment_status: 'pending',
-            total_amount: services.reduce((sum, service) => sum + service.baseRate, 0),
-            deposit_amount: services.reduce((sum, service) => sum + service.baseRate * 0.3, 0)
-          }
-        ])
-        .select()
-        .single();
+      const { data, error } = await supabase.createBooking({
+        email: formData.email,
+        phone: formData.phone,
+        name: formData.name,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zip: formData.zip,
+        total_amount: services.reduce((sum, service) => sum + service.baseRate, 0),
+        services: services.map(service => ({
+          serviceId: service.id,
+          material: 'default',
+          size: '1',
+          stories: 1,
+          roofPitch: 'low',
+          price: service.baseRate
+        }))
+      });
 
-      if (bookingError) throw bookingError;
+      if (error) throw error;
 
-      setBookingId(booking.id);
+      setBookingId(data.id);
       showToast({
-        message: 'Booking created successfully',
+        message: 'Booking created successfully!',
         type: 'success'
       });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create booking';
-      setError(errorMessage);
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create booking');
       showToast({
-        message: errorMessage,
+        message: 'Failed to create booking. Please try again.',
         type: 'error'
       });
     } finally {
@@ -75,56 +68,30 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
     }
   };
 
-  const handlePaymentSuccess = () => {
-    showToast({
-      message: 'Payment processed successfully',
-      type: 'success'
-    });
-    onSuccess();
-  };
-
-  const handlePaymentError = (error: Error) => {
-    setError(error.message);
-    showToast({
-      message: error.message,
-      type: 'error'
-    });
-  };
-
-  if (isLoading) {
-    return <div>Creating booking...</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="text-red-500">
-        {error}
-        <button
-          onClick={() => setError(null)}
-          className="mt-4 bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
   if (bookingId) {
-    const totalAmount = services.reduce((sum, service) => sum + service.baseRate, 0);
-    const depositAmount = totalAmount * 0.3;
-
     return (
       <PaymentForm
         bookingId={bookingId}
-        amount={depositAmount}
-        onSuccess={handlePaymentSuccess}
-        onError={handlePaymentError}
+        amount={services.reduce((sum, service) => sum + service.baseRate * 0.3, 0)}
+        onSuccess={onSuccess}
+        onError={(error) => {
+          setError(error.message);
+          showToast({
+            message: 'Payment failed. Please try again.',
+            type: 'error'
+          });
+        }}
       />
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" role="form" aria-label="Contact Information">
+      {error && (
+        <div className="text-red-500 text-sm" role="alert">
+          {error}
+        </div>
+      )}
       <div>
         <label htmlFor="name" className="block text-sm font-medium text-gray-700">
           Name
@@ -132,9 +99,9 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
         <input
           type="text"
           id="name"
+          required
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         />
       </div>
@@ -145,9 +112,9 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
         <input
           type="email"
           id="email"
+          required
           value={formData.email}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-          required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         />
       </div>
@@ -158,9 +125,9 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
         <input
           type="tel"
           id="phone"
+          required
           value={formData.phone}
           onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-          required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         />
       </div>
@@ -171,9 +138,9 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
         <input
           type="text"
           id="address"
+          required
           value={formData.address}
           onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-          required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         />
       </div>
@@ -184,9 +151,9 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
         <input
           type="text"
           id="city"
+          required
           value={formData.city}
           onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-          required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         />
       </div>
@@ -197,9 +164,9 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
         <input
           type="text"
           id="state"
+          required
           value={formData.state}
           onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-          required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         />
       </div>
@@ -210,17 +177,18 @@ export function ContactForm({ services, onSuccess }: ContactFormProps) {
         <input
           type="text"
           id="zip"
+          required
           value={formData.zip}
           onChange={(e) => setFormData({ ...formData, zip: e.target.value })}
-          required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
         />
       </div>
       <button
         type="submit"
+        disabled={isLoading}
         className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
       >
-        Create Booking
+        {isLoading ? 'Creating Booking...' : 'Create Booking'}
       </button>
     </form>
   );
