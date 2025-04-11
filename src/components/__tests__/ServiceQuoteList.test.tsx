@@ -8,17 +8,19 @@ describe('ServiceQuoteList', () => {
   const mockQuotes: ServiceQuote[] = [
     {
       serviceId: '1',
-      material: 'concrete',
-      size: '2000',
-      stories: '2' as const,
-      price: 299.99
+      material: 'vinyl',
+      size: '1000',
+      stories: 2,
+      roofPitch: 'low pitch',
+      price: 500
     },
     {
       serviceId: '2',
-      material: 'asphalt',
-      size: '3000',
-      stories: '1' as const,
-      price: 499.99
+      material: 'brick',
+      size: '800',
+      stories: 1,
+      roofPitch: 'medium pitch',
+      price: 400
     }
   ];
 
@@ -48,8 +50,8 @@ describe('ServiceQuoteList', () => {
   it('displays price for each quote', () => {
     renderServiceQuoteList();
     
-    expect(screen.getByText(/\$299.99/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$499.99/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$500.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$400.00/i)).toBeInTheDocument();
   });
 
   it('calls onRemove when remove button is clicked', async () => {

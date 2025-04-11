@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { LoadingSpinner } from './LoadingSpinner';
-import { CheckCircle2, XCircle, ArrowLeft, Calendar } from 'lucide-react';
+import { CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface BookingDetails {
@@ -61,9 +61,9 @@ export function BookingConfirmation() {
 
         const { data } = await response.json();
         setBooking(data);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error fetching booking:', error);
-        setError(error.message);
+        setError(error instanceof Error ? error.message : 'Failed to fetch booking details');
       } finally {
         setLoading(false);
       }

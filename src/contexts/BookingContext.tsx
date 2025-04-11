@@ -1,31 +1,46 @@
-import React, { createContext, useContext, ReactNode } from 'react';
-import { Service } from '../types';
-import { services } from '../constants';
+import React, { createContext, useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase/client';
+import { Service } from '@/types';
+import { defaultBookingContext } from '@/constants/booking';
 
 interface BookingContextType {
   services: Service[];
   loading: boolean;
-  error: string | null;
+  error: Error | null;
 }
 
-const BookingContext = createContext<BookingContextType>({
-  services,
-  loading: false,
-  error: null,
-});
+const BookingContext = createContext<BookingContextType>(defaultBookingContext);
 
-export const useBookingContext = () => useContext(BookingContext);
+export function BookingProvider({ children }: { children: React.ReactNode }) {
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-interface BookingProviderProps {
-  children: ReactNode;
-}
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('services')
+          .select('*')
+          .order('name');
 
-export const BookingProvider: React.FC<BookingProviderProps> = ({ children }) => {
+        if (error) throw error;
+        setServices(data || []);
+      } catch (err) {
+        setError(err as Error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchServices();
+  }, []);
+
   return (
-    <BookingContext.Provider value={{ services, loading: false, error: null }}>
+    <BookingContext.Provider value={{ services, loading, error }}>
       {children}
     </BookingContext.Provider>
   );
-};
+}
 
-export default BookingContext; 
+export { BookingContext }; 

@@ -1,26 +1,20 @@
-import { useState, useCallback } from 'react';
-import { ToastType } from '../components/Toast';
+import { useState } from 'react';
+import type { ToastType } from '../components/Toast';
 
-interface ToastState {
-  message: string;
-  type: ToastType;
-}
+export function useToast() {
+  const [toast, setToast] = useState<ToastType | null>(null);
 
-export function useToast(duration = 5000) {
-  const [toast, setToast] = useState<ToastState | null>(null);
-
-  const showToast = useCallback((message: string, type: ToastType) => {
-    setToast({ message, type });
-  }, []);
-
-  const hideToast = useCallback(() => {
-    setToast(null);
-  }, []);
-
-  return {
-    toast,
-    showToast,
-    hideToast,
-    duration,
+  const showToast = ({ message, type }: { message: string; type: 'success' | 'error' | 'info' }) => {
+    setToast({
+      message,
+      type,
+      visible: true
+    });
   };
+
+  const hideToast = () => {
+    setToast(null);
+  };
+
+  return { toast, showToast, hideToast };
 }

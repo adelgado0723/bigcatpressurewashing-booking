@@ -1,16 +1,15 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContactForm } from '../ContactForm';
 import { ServiceQuote } from '../../types';
 
 // Mock supabase module first to avoid hoisting issues
-vi.mock('../../lib/supabase', () => ({
+vi.mock('../../lib/supabase/client', () => ({
   supabase: {
-    logQuote: vi.fn().mockResolvedValue({ data: null, error: null }),
-    createBooking: vi.fn().mockResolvedValue({ data: null, error: null }),
-    getBooking: vi.fn().mockResolvedValue({ data: null, error: null }),
-    updateBookingPayment: vi.fn().mockResolvedValue({ data: null, error: null }),
+    logQuote: vi.fn().mockImplementation(async () => undefined),
+    createBooking: vi.fn().mockImplementation(async () => ({ data: { id: 'test-booking-id' } })),
+    getBooking: vi.fn().mockImplementation(async () => ({ data: null, error: null })),
+    updateBookingPayment: vi.fn().mockImplementation(async () => undefined),
     from: vi.fn().mockReturnValue({
       insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       select: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -20,7 +19,7 @@ vi.mock('../../lib/supabase', () => ({
 }));
 
 // Import supabase after mocking
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase/client';
 
 // Mock all icon components to avoid SVG rendering issues in tests
 vi.mock('lucide-react', () => ({
@@ -84,7 +83,7 @@ describe('ContactForm', () => {
     serviceId: 'pressure-washing',
     material: 'concrete',
     size: '1000',
-    stories: '1',
+    stories: 1,
     roofPitch: 'low pitch',
     price: 100,
   }];
@@ -120,7 +119,7 @@ describe('ContactForm', () => {
     // Reset window.location.href before each test
     window.location.href = '';
     // Reset supabase mock implementation
-    vi.mocked(supabase.logQuote).mockResolvedValue({ success: true });
+    vi.mocked(supabase.logQuote).mockResolvedValue(undefined);
     vi.mocked(supabase.createBooking).mockResolvedValue({ data: { id: 'test-booking-id' } });
   });
 

@@ -1,154 +1,121 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { LoadingSpinner } from '../components/LoadingSpinner';
-import {
-  BarChart,
-  Users,
-  DollarSign,
-  Clock,
-  AlertCircle,
-  CheckCircle2,
-  XCircle,
-  RefreshCw
-} from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { supabase } from '@/lib/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
+import { Loader2, AlertCircle } from 'lucide-react';
+import { BOOKING_STATUS, PAYMENT_STATUS } from '@/constants/booking';
 
 interface QuoteAnalytics {
-  id: string;
-  email: string;
-  services: Array<{
-    serviceId: string;
-    material: string;
-    size: string;
-    stories: string;
-    roofPitch: string;
-    price: number;
-  }>;
-  total_amount: number;
-  quote_time: string;
-  converted_to_booking: boolean;
-  booking_id: string | null;
-  deposit_paid: boolean;
-  deposit_paid_at: string | null;
-  booking_time: string | null;
-  hours_to_convert: number | null;
-  hours_to_deposit: number | null;
+  total: number;
+  confirmed: number;
+  cancelled: number;
+  pending: number;
 }
 
 interface ConversionMetrics {
-  date: string;
-  total_quotes: number;
-  converted_quotes: number;
-  paid_deposits: number;
-  conversion_rate: number;
-  deposit_rate: number;
+  conversionRate: number;
+  averageQuoteValue: number;
+  totalRevenue: number;
 }
 
 interface UserSession {
   user: {
     id: string;
+    email: string;
+    role: string;
   };
 }
 
 export function AdminDashboard() {
+  const { toast } = useToast();
   const [session, setSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [droppedQuotes, setDroppedQuotes] = useState<QuoteAnalytics[]>([]);
-  const [pendingDeposits, setPendingDeposits] = useState<QuoteAnalytics[]>([]);
-  const [metrics, setMetrics] = useState<ConversionMetrics[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const [quotes, setQuotes] = useState<QuoteAnalytics>({
+    total: 0,
+    confirmed: 0,
+    cancelled: 0,
+    pending: 0,
+  });
+  const [metrics, setMetrics] = useState<ConversionMetrics>({
+    conversionRate: 0,
+    averageQuoteValue: 0,
+    totalRevenue: 0,
+  });
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session as UserSession);
-      checkAdminStatus(session as UserSession);
-    });
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        setSession(session as UserSession);
+        setIsAdmin(session?.user?.role === 'admin');
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: 'Failed to check session',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session as UserSession);
-      checkAdminStatus(session as UserSession);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const checkAdminStatus = async (session: UserSession | null) => {
-    if (!session) {
-      setIsAdmin(false);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const { data: user, error } = await supabase.from('users')
-        .select('role')
-        .eq('id', session.user.id)
-        .single();
-
-      if (error) throw error;
-      setIsAdmin(user?.role === 'admin');
-    } catch (error) {
-      console.error('Error checking admin status:', error instanceof Error ? error.message : 'Unknown error');
-      setIsAdmin(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchData = async () => {
-    try {
-      setRefreshing(true);
-
-      // Fetch dropped quotes
-      const { data: dropped, error: droppedError } = await supabase.from('quote_analytics')
-        .select('*')
-        .eq('converted_to_booking', false)
-        .order('quote_time', { ascending: false });
-
-      if (droppedError) throw droppedError;
-      setDroppedQuotes(dropped || []);
-
-      // Fetch pending deposits
-      const { data: pending, error: pendingError } = await supabase.from('quote_analytics')
-        .select('*')
-        .eq('converted_to_booking', true)
-        .eq('deposit_paid', false)
-        .order('quote_time', { ascending: false });
-
-      if (pendingError) throw pendingError;
-      setPendingDeposits(pending || []);
-
-      // Fetch conversion metrics
-      const { data: metricsData, error: metricsError } = await supabase.from('conversion_metrics')
-        .select('*')
-        .order('date', { ascending: false })
-        .limit(30);
-
-      if (metricsError) throw metricsError;
-      setMetrics(metricsData || []);
-    } catch (error) {
-      console.error('Error fetching data:', error instanceof Error ? error.message : 'Unknown error');
-    } finally {
-      setRefreshing(false);
-    }
-  };
+    checkSession();
+  }, [toast]);
 
   useEffect(() => {
-    if (isAdmin) {
-      fetchData();
-    }
-  }, [isAdmin]);
+    const fetchAnalytics = async () => {
+      if (!isAdmin) return;
 
-  const handleServiceType = (service: { serviceId: string; material: string; size: string; stories: string; roofPitch: string; price: number }) => {
-    return service.serviceId;
-  };
+      try {
+        const { data: quotesData, error: quotesError } = await supabase
+          .from('quotes')
+          .select('*');
+
+        if (quotesError) throw quotesError;
+
+        const { data: bookingsData, error: bookingsError } = await supabase
+          .from('bookings')
+          .select('*');
+
+        if (bookingsError) throw bookingsError;
+
+        const analytics: QuoteAnalytics = {
+          total: quotesData.length,
+          confirmed: quotesData.filter(q => q.status === BOOKING_STATUS.CONFIRMED).length,
+          cancelled: quotesData.filter(q => q.status === BOOKING_STATUS.CANCELLED).length,
+          pending: quotesData.filter(q => q.status === BOOKING_STATUS.PENDING).length,
+        };
+
+        const revenue = bookingsData
+          .filter(b => b.payment_status === PAYMENT_STATUS.PAID)
+          .reduce((sum, b) => sum + b.total_amount, 0);
+
+        const metrics: ConversionMetrics = {
+          conversionRate: analytics.confirmed / analytics.total * 100,
+          averageQuoteValue: revenue / analytics.confirmed || 0,
+          totalRevenue: revenue,
+        };
+
+        setQuotes(analytics);
+        setMetrics(metrics);
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch analytics',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    fetchAnalytics();
+  }, [isAdmin, toast]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <LoadingSpinner className="w-8 h-8 text-blue-600" />
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
@@ -170,171 +137,70 @@ export function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <button
-            onClick={fetchData}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400"
-          >
-            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh Data
-          </button>
+    <div className="p-4">
+      <h1 className="mb-4 text-2xl font-bold">Admin Dashboard</h1>
+      
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg bg-white p-4 shadow">
+          <h2 className="text-lg font-semibold">Total Quotes</h2>
+          <p className="text-3xl font-bold">{quotes.total}</p>
         </div>
-
-        {/* Metrics Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center gap-4">
-              <Users className="w-8 h-8 text-blue-600" />
-              <div>
-                <p className="text-sm text-gray-600">Total Quotes (30d)</p>
-                <p className="text-2xl font-semibold">
-                  {metrics[0]?.total_quotes || 0}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center gap-4">
-              <BarChart className="w-8 h-8 text-green-600" />
-              <div>
-                <p className="text-sm text-gray-600">Conversion Rate</p>
-                <p className="text-2xl font-semibold">
-                  {metrics[0]?.conversion_rate || 0}%
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center gap-4">
-              <DollarSign className="w-8 h-8 text-yellow-600" />
-              <div>
-                <p className="text-sm text-gray-600">Deposit Rate</p>
-                <p className="text-2xl font-semibold">
-                  {metrics[0]?.deposit_rate || 0}%
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center gap-4">
-              <Clock className="w-8 h-8 text-purple-600" />
-              <div>
-                <p className="text-sm text-gray-600">Avg Time to Convert</p>
-                <p className="text-2xl font-semibold">
-                  {Math.round(
-                    droppedQuotes.reduce((acc, q) => acc + (q.hours_to_convert || 0), 0) /
-                    droppedQuotes.filter(q => q.hours_to_convert).length || 0
-                  )}h
-                </p>
-              </div>
-            </div>
-          </div>
+        <div className="rounded-lg bg-white p-4 shadow">
+          <h2 className="text-lg font-semibold">Confirmed</h2>
+          <p className="text-3xl font-bold">{quotes.confirmed}</p>
         </div>
+        <div className="rounded-lg bg-white p-4 shadow">
+          <h2 className="text-lg font-semibold">Cancelled</h2>
+          <p className="text-3xl font-bold">{quotes.cancelled}</p>
+        </div>
+        <div className="rounded-lg bg-white p-4 shadow">
+          <h2 className="text-lg font-semibold">Pending</h2>
+          <p className="text-3xl font-bold">{quotes.pending}</p>
+        </div>
+      </div>
 
-        {/* Dropped Quotes */}
-        <div className="bg-white rounded-lg shadow mb-8">
-          <div className="p-6 border-b">
-            <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-              <XCircle className="w-5 h-5 text-red-500" />
-              Dropped Quotes
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Services
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount
-                  </th>
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-lg bg-white p-4 shadow">
+          <h2 className="text-lg font-semibold">Conversion Rate</h2>
+          <p className="text-3xl font-bold">{metrics.conversionRate.toFixed(1)}%</p>
+        </div>
+        <div className="rounded-lg bg-white p-4 shadow">
+          <h2 className="text-lg font-semibold">Average Quote Value</h2>
+          <p className="text-3xl font-bold">${metrics.averageQuoteValue.toFixed(2)}</p>
+        </div>
+        <div className="rounded-lg bg-white p-4 shadow">
+          <h2 className="text-lg font-semibold">Total Revenue</h2>
+          <p className="text-3xl font-bold">${metrics.totalRevenue.toFixed(2)}</p>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-white p-4 shadow">
+        <h2 className="mb-4 text-lg font-semibold">Recent Quotes</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className="px-4 py-2 text-left">ID</th>
+                <th className="px-4 py-2 text-left">Customer</th>
+                <th className="px-4 py-2 text-left">Status</th>
+                <th className="px-4 py-2 text-left">Amount</th>
+                <th className="px-4 py-2 text-left">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quotes.total === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-2 text-center">
+                    No quotes found
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {droppedQuotes.map((quote) => (
-                  <tr key={quote.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {format(new Date(quote.quote_time), 'PPp')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {quote.email}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {quote.services.map(handleServiceType).join(', ')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      ${quote.total_amount.toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Pending Deposits */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-6 border-b">
-            <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-yellow-500" />
-              Pending Deposits
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Booking Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Services
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time Since Quote
-                  </th>
+              ) : (
+                <tr>
+                  <td className="px-4 py-2">Loading...</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {pendingDeposits.map((booking) => (
-                  <tr key={booking.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {format(new Date(booking.booking_time!), 'PPp')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {booking.email}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {booking.services.map(handleServiceType).join(', ')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      ${booking.total_amount.toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {formatDistanceToNow(new Date(booking.quote_time), { addSuffix: true })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

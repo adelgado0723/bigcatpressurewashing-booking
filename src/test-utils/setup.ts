@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom';
-import { afterEach, expect, Mock } from 'vitest';
+import { expect, vi, afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
-import { vi } from 'vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
 
 // Mock environment variables
 vi.mock('../config/env', () => ({
@@ -9,19 +9,8 @@ vi.mock('../config/env', () => ({
   VITE_SUPABASE_ANON_KEY: 'test-anon-key'
 }));
 
-// Extend expect with jest-dom matchers
-expect.extend({
-  toHaveBeenCalledWithError(received: Mock, errorMessage: string) {
-    const { isNot } = this;
-    return {
-      pass: received.mock.calls.some((call: any[]) => 
-        call[0] instanceof Error && call[0].message === errorMessage
-      ),
-      message: () => 
-        `expected ${received.getMockName()} ${isNot ? 'not ' : ''}to have been called with error: ${errorMessage}`,
-    };
-  },
-});
+// Extend Vitest's expect method with methods from react-testing-library
+expect.extend(matchers);
 
 // Cleanup after each test
 afterEach(() => {

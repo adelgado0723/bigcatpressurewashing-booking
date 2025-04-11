@@ -1,7 +1,7 @@
 import React from 'react';
 import { LogIn } from 'lucide-react';
 import { ServiceQuote } from '../../types';
-import { formatPrice, getServiceSummary } from '../../lib/utils';
+import { getServiceSummary } from '../../lib/utils';
 
 interface AuthPromptProps {
   onClose: () => void;

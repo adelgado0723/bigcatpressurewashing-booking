@@ -73,7 +73,8 @@ export default [
       '@typescript-eslint/no-unused-vars': ['error', { 
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_'
-      }]
+      }],
+      'react/react-in-jsx-scope': 'off' // Not needed with new JSX transform
     }
   }
 ]; 

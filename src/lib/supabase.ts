@@ -79,8 +79,8 @@ export const supabase = {
         services: data.services.map(quote => ({
           service_type: services.find(s => s.id === quote.serviceId)?.name,
           material: quote.material,
-          size: parseFloat(quote.size),
-          stories: quote.stories ? parseInt(quote.stories) : null,
+          size: quote.size ? parseFloat(quote.size) : 1,
+          stories: quote.stories ? Number(quote.stories) : null,
           roof_pitch: quote.roofPitch,
           price: quote.price,
         })),

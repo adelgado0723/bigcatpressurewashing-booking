@@ -1,5 +1,4 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../database.types';
 import { ServiceQuote } from '../../types';
 
 export class SupabaseService {
@@ -38,12 +37,12 @@ export class SupabaseService {
       roofPitch?: string;
       price: number;
     }>;
-    totalAmount: number;
+    total_amount: number;
   }) {
     const { error } = await this.client.from('quotes').insert({
       email: data.email,
       services: data.services,
-      total_amount: data.totalAmount
+      total_amount: data.total_amount
     });
 
     if (error) throw error;

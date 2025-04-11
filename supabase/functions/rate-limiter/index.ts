@@ -1,92 +1,84 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from '@supabase/supabase-js';
-import { RateLimiter, checkRateLimit } from '../shared/rate-limiter.ts';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+
+declare global {
+  interface DenoEnv {
+    get(key: string): string | undefined;
+  }
+
+  const env: DenoEnv;
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 };
 
+interface RateLimiterConfig {
+  maxRequests: number;
+  windowMs: number;
+}
+
+export class RateLimiter {
+  private requests: Map<string, number[]>;
+  private config: RateLimiterConfig;
+
+  constructor(config: RateLimiterConfig) {
+    this.requests = new Map();
+    this.config = config;
+  }
+
+  isRateLimited(key: string): boolean {
+    const now = Date.now();
+    const windowStart = now - this.config.windowMs;
+
+    // Get existing requests for this key
+    let requestTimestamps = this.requests.get(key) || [];
+
+    // Filter out old requests
+    requestTimestamps = requestTimestamps.filter(timestamp => timestamp > windowStart);
+
+    // Check if rate limit is exceeded
+    if (requestTimestamps.length >= this.config.maxRequests) {
+      return true;
+    }
+
+    // Add current request
+    requestTimestamps.push(now);
+    this.requests.set(key, requestTimestamps);
+
+    return false;
+  }
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  try {
-    const url = new URL(req.url);
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '0.0.0.0';
-    const domain = url.hostname;
+  const rateLimiter = new RateLimiter({
+    maxRequests: 100,
+    windowMs: 60000, // 1 minute
+  });
 
-    // Create Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    );
+  const clientIp = req.headers.get('x-forwarded-for') || 'unknown';
 
-    // Check rate limit
-    const result = await checkRateLimit(
-      `${domain}:${clientIp}`,
-      60,  // 60 requests
-      60000,  // per minute
-      supabaseClient
-    );
-
-    // Return rate limit information in headers
-    const headers = {
-      ...corsHeaders,
-      'X-RateLimit-Limit': '60',
-      'X-RateLimit-Remaining': result.remaining.toString(),
-      'X-RateLimit-Reset': result.reset.toString(),
-    };
-
-    if (!result.allowed) {
-      return new Response(
-        JSON.stringify({
-          error: 'Too many requests',
-          message: 'Rate limit exceeded. Please try again later.',
-          remaining: result.remaining,
-          reset: result.reset,
-        }),
-        {
-          status: 429,
-          headers: {
-            ...headers,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-    }
-
+  if (rateLimiter.isRateLimited(clientIp)) {
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Request allowed',
-        remaining: result.remaining,
-        reset: result.reset,
-      }),
+      JSON.stringify({ error: 'Too many requests' }),
       {
-        status: 200,
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-  } catch (error) {
-    console.error('Error:', error.message);
-    return new Response(
-      JSON.stringify({
-        error: 'Internal server error',
-        message: 'An unexpected error occurred.',
-      }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 429,
       }
     );
   }
+
+  return new Response(
+    JSON.stringify({ success: true }),
+    {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    }
+  );
 }); 

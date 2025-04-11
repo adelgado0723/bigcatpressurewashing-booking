@@ -1,378 +1,227 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Mail, Phone, User, MapPin, ArrowRight } from 'lucide-react';
-import { ServiceQuote } from '../types';
+import { Service } from '@/types';
 import { PaymentForm } from './PaymentForm';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@/lib/supabase/client';
+import { useToast } from '@/hooks/useToast';
 
-export interface ContactFormProps {
-  email: string;
-  phone: string;
-  name: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-  loading: boolean;
-  error: string | null;
-  serviceQuotes: ServiceQuote[];
-  isGuest: boolean;
-  onEmailChange: (value: string) => void;
-  onPhoneChange: (value: string) => void;
-  onNameChange: (value: string) => void;
-  onAddressChange: (value: string) => void;
-  onCityChange: (value: string) => void;
-  onStateChange: (value: string) => void;
-  onZipChange: (value: string) => void;
-  onBack: () => void;
-  formatPrice: (price: number) => string;
-  getTotalPrice: () => number | null;
-  getServiceSummary: (quote: ServiceQuote) => string;
+interface ContactFormProps {
+  services: Service[];
+  onSuccess: () => void;
 }
 
-export function ContactForm({
-  email,
-  phone,
-  name,
-  address,
-  city,
-  state,
-  zip,
-  loading,
-  error,
-  serviceQuotes,
-  isGuest,
-  onEmailChange,
-  onPhoneChange,
-  onNameChange,
-  onAddressChange,
-  onCityChange,
-  onStateChange,
-  onZipChange,
-  onBack,
-  formatPrice,
-  getTotalPrice,
-  getServiceSummary,
-}: ContactFormProps) {
+export function ContactForm({ services, onSuccess }: ContactFormProps) {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
+    zip: ''
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
-  const [showPayment, setShowPayment] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [formSubmitted, setFormSubmitted] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
-
-  const validateContactInfo = () => {
-    const errors: Record<string, string> = {};
-    if (!email) {
-      errors.email = 'Email is required';
-    } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(email)) {
-      errors.email = 'Invalid email address';
-    }
-    if (phone && !/^\+?[1-9]\d{1,14}$/.test(phone)) {
-      errors.phone = 'Invalid phone number';
-    }
-    if (!address) {
-      errors.address = 'Address is required';
-    }
-    if (!city) {
-      errors.city = 'City is required';
-    }
-    if (!state) {
-      errors.state = 'State is required';
-    }
-    if (!zip) {
-      errors.zip = 'ZIP code is required';
-    }
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+  const { showToast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateContactInfo()) {
-      return;
-    }
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const totalAmount = getTotalPrice();
-      if (!totalAmount) return;
+      // First create the booking
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .insert([
+          {
+            customer_name: formData.name,
+            customer_email: formData.email,
+            customer_phone: formData.phone,
+            address: formData.address,
+            city: formData.city,
+            state: formData.state,
+            zip: formData.zip,
+            service_quotes: services.map(service => ({
+              service_id: service.id,
+              service_name: service.name,
+              price: service.baseRate
+            })),
+            status: 'pending',
+            payment_status: 'pending',
+            total_amount: services.reduce((sum, service) => sum + service.baseRate, 0),
+            deposit_amount: services.reduce((sum, service) => sum + service.baseRate * 0.3, 0)
+          }
+        ])
+        .select()
+        .single();
 
-      setSubmitting(true);
-      setFormSubmitted(true);
+      if (bookingError) throw bookingError;
 
-      // Log the quote
-      await supabase.logQuote({
-        email,
-        services: serviceQuotes.map(quote => ({
-          serviceType: quote.serviceId,
-          size: parseFloat(quote.size),
-          material: quote.material,
-          stories: quote.stories ? parseInt(quote.stories) : undefined,
-          roofPitch: quote.roofPitch,
-          price: quote.price,
-        })),
-        totalAmount,
+      setBookingId(booking.id);
+      showToast({
+        message: 'Booking created successfully',
+        type: 'success'
       });
-
-      // Create the booking
-      const { data } = await supabase.createBooking({
-        email,
-        phone,
-        name,
-        address,
-        city,
-        state,
-        zip,
-        totalAmount,
-        depositAmount: 50,
-        services: serviceQuotes,
-        isGuest,
-      });
-
-      setBookingId(data.id);
-      setShowPayment(true);
-    } catch (error: any) {
-      console.error('Submission error:', error);
-      setValidationErrors({
-        submit: 'failed to submit booking',
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create booking';
+      setError(errorMessage);
+      showToast({
+        message: errorMessage,
+        type: 'error'
       });
     } finally {
-      setSubmitting(false);
+      setIsLoading(false);
     }
   };
 
-  if (showPayment && bookingId) {
+  const handlePaymentSuccess = () => {
+    showToast({
+      message: 'Payment processed successfully',
+      type: 'success'
+    });
+    onSuccess();
+  };
+
+  const handlePaymentError = (error: Error) => {
+    setError(error.message);
+    showToast({
+      message: error.message,
+      type: 'error'
+    });
+  };
+
+  if (isLoading) {
+    return <div>Creating booking...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="text-red-500">
+        {error}
+        <button
+          onClick={() => setError(null)}
+          className="mt-4 bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  if (bookingId) {
+    const totalAmount = services.reduce((sum, service) => sum + service.baseRate, 0);
+    const depositAmount = totalAmount * 0.3;
+
     return (
       <PaymentForm
         bookingId={bookingId}
-        amount={50}
-        onSuccess={() => window.location.href = `/booking-confirmation?id=${bookingId}`}
-        onError={(error) => setValidationErrors({ submit: error })}
+        amount={depositAmount}
+        onSuccess={handlePaymentSuccess}
+        onError={handlePaymentError}
       />
     );
   }
 
   return (
-    <form 
-      role="form"
-      onSubmit={handleSubmit}
-      className="space-y-4"
-    >
-      {error && (
-        <div role="alert" className="p-4 mb-4 text-red-700 bg-red-50 rounded-lg">
-          {error.toString().toLowerCase()}
-        </div>
-      )}
-      <div className="flex items-center gap-4 mb-6">
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={submitting}
-          className="text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h2 className="text-2xl font-semibold text-space_cadet">
-          Contact Information
-        </h2>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+          Name
+        </label>
+        <input
+          type="text"
+          id="name"
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-space_cadet mb-2">
-            <div className="flex items-center gap-2">
-              <Mail className="w-4 h-4" />
-              Email
-            </div>
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => onEmailChange(e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-steel_blue focus:border-steel_blue ${
-              validationErrors.email ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="your@email.com"
-            required
-            disabled={loading || submitting}
-          />
-          {validationErrors.email && (
-            <p className="mt-1 text-sm text-red-600">{validationErrors.email}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="phone" className="block text-sm font-medium text-space_cadet mb-2">
-            <div className="flex items-center gap-2">
-              <Phone className="w-4 h-4" />
-              Phone Number
-            </div>
-          </label>
-          <input
-            id="phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => onPhoneChange(e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-steel_blue focus:border-steel_blue ${
-              validationErrors.phone ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="(123) 456-7890"
-            disabled={loading || submitting}
-          />
-          {validationErrors.phone && (
-            <p className="mt-1 text-sm text-red-600">{validationErrors.phone}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="name" className="block text-sm font-medium text-space_cadet mb-2">
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Name
-            </div>
-          </label>
-          <input
-            id="name"
-            type="text"
-            value={name}
-            onChange={(e) => onNameChange(e.target.value)}
-            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-steel_blue focus:border-steel_blue"
-            placeholder="John Doe"
-            disabled={loading || submitting}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="address" className="block text-sm font-medium text-space_cadet mb-2">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4" />
-              Street Address
-            </div>
-          </label>
-          <input
-            id="address"
-            type="text"
-            value={address}
-            onChange={(e) => onAddressChange(e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-steel_blue focus:border-steel_blue ${
-              validationErrors.address ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="123 Main St"
-            required
-            disabled={loading || submitting}
-          />
-          {validationErrors.address && (
-            <p className="mt-1 text-sm text-red-600">{validationErrors.address}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="city" className="block text-sm font-medium text-space_cadet mb-2">City</label>
-          <input
-            id="city"
-            type="text"
-            value={city}
-            onChange={(e) => onCityChange(e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-steel_blue focus:border-steel_blue ${
-              validationErrors.city ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="City"
-            required
-            disabled={loading || submitting}
-          />
-          {validationErrors.city && (
-            <p className="mt-1 text-sm text-red-600">{validationErrors.city}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="state" className="block text-sm font-medium text-space_cadet mb-2">State</label>
-          <input
-            id="state"
-            type="text"
-            value={state}
-            onChange={(e) => onStateChange(e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-steel_blue focus:border-steel_blue ${
-              validationErrors.state ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="State"
-            required
-            disabled={loading || submitting}
-          />
-          {validationErrors.state && (
-            <p className="mt-1 text-sm text-red-600">{validationErrors.state}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="zip" className="block text-sm font-medium text-space_cadet mb-2">ZIP Code</label>
-          <input
-            id="zip"
-            type="text"
-            value={zip}
-            onChange={(e) => onZipChange(e.target.value)}
-            className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-steel_blue focus:border-steel_blue ${
-              validationErrors.zip ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="ZIP"
-            required
-            disabled={loading || submitting}
-          />
-          {validationErrors.zip && (
-            <p className="mt-1 text-sm text-red-600">{validationErrors.zip}</p>
-          )}
-        </div>
+      <div>
+        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+          Email
+        </label>
+        <input
+          type="email"
+          id="email"
+          value={formData.email}
+          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
       </div>
-
-      <div className="mt-8 pt-6 border-t">
-        <div className="mb-6">
-          <h3 className="text-xl font-semibold text-space_cadet mb-4">Order Summary</h3>
-          {isGuest && (
-            <div className="mb-4 p-4 bg-blue-50 text-blue-700 rounded-lg">
-              Guest Checkout - No account required
-            </div>
-          )}
-          <div className="space-y-4">
-            {serviceQuotes.map((quote, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between bg-alice_blue p-4 rounded-lg"
-              >
-                <div>
-                  <p className="font-medium text-space_cadet">{getServiceSummary(quote)}</p>
-                </div>
-              </div>
-            ))}
-            <div className="flex justify-between items-center pt-4 border-t">
-              <div>
-                <p className="text-lg font-medium text-space_cadet">
-                  {formSubmitted ? formatPrice(getTotalPrice() || 0) : 'Submit form to view pricing'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-between">
-          <button
-            type="button"
-            onClick={onBack}
-            disabled={loading || submitting}
-            className="border border-gray-300 text-gray-500 rounded-lg px-6 py-2 hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back
-          </button>
-          <button
-            type="submit"
-            disabled={loading || submitting}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3 text-white bg-steel_blue rounded-lg hover:bg-steel_blue-600 focus:outline-none focus:ring-2 focus:ring-steel_blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Continue to Payment
-            <ArrowRight className="w-5 h-5" />
-          </button>
-        </div>
+      <div>
+        <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+          Phone
+        </label>
+        <input
+          type="tel"
+          id="phone"
+          value={formData.phone}
+          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
       </div>
+      <div>
+        <label htmlFor="address" className="block text-sm font-medium text-gray-700">
+          Address
+        </label>
+        <input
+          type="text"
+          id="address"
+          value={formData.address}
+          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
+      </div>
+      <div>
+        <label htmlFor="city" className="block text-sm font-medium text-gray-700">
+          City
+        </label>
+        <input
+          type="text"
+          id="city"
+          value={formData.city}
+          onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
+      </div>
+      <div>
+        <label htmlFor="state" className="block text-sm font-medium text-gray-700">
+          State
+        </label>
+        <input
+          type="text"
+          id="state"
+          value={formData.state}
+          onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
+      </div>
+      <div>
+        <label htmlFor="zip" className="block text-sm font-medium text-gray-700">
+          ZIP Code
+        </label>
+        <input
+          type="text"
+          id="zip"
+          value={formData.zip}
+          onChange={(e) => setFormData({ ...formData, zip: e.target.value })}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+        />
+      </div>
+      <button
+        type="submit"
+        className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+      >
+        Create Booking
+      </button>
     </form>
   );
 }

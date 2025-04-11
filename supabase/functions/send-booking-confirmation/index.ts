@@ -1,109 +1,79 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.39.7';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { verifyAuth } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 };
 
-interface EmailPayload {
-  bookingId: string;
+interface BookingData {
+  id: string;
+  email: string;
+  name: string;
+  service_type: string;
+  total_amount: number;
+  status: string;
 }
 
-Deno.serve(async (req) => {
-  // Handle CORS
+async function sendConfirmationEmail(booking: BookingData) {
+  const emailServiceUrl = Deno.env.get('EMAIL_SERVICE_URL');
+  if (!emailServiceUrl) {
+    throw new Error('EMAIL_SERVICE_URL environment variable not set');
+  }
+
+  const response = await fetch(emailServiceUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to: booking.email,
+      subject: 'Booking Confirmation',
+      template: 'booking-confirmation',
+      data: {
+        name: booking.name,
+        serviceType: booking.service_type,
+        totalAmount: booking.total_amount,
+        status: booking.status,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to send confirmation email: ${response.statusText}`);
+  }
+}
+
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: corsHeaders,
-    });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const { supabase } = await verifyAuth(req);
+    const { bookingId } = await req.json();
 
-    const { bookingId } = await req.json() as EmailPayload;
-
-    // Fetch booking details
-    const { data: booking, error: bookingError } = await supabase
+    const { data: booking, error } = await supabase
       .from('bookings')
-      .select(`
-        *,
-        booking_services (*)
-      `)
+      .select('*')
       .eq('id', bookingId)
       .single();
 
-    if (bookingError) throw bookingError;
-    if (!booking) throw new Error('Booking not found');
+    if (error) throw error;
 
-    // Format services for email
-    const servicesList = booking.booking_services
-      .map((service: any) => {
-        let details = `${service.service_type} - ${service.size} ${service.service_type.toLowerCase().includes('gutter') ? 'ft' : 'sqft'}`;
-        if (service.material) details += ` (${service.material})`;
-        if (service.stories) details += ` - ${service.stories} ${service.stories === 1 ? 'story' : 'stories'}`;
-        if (service.roof_pitch) details += ` - ${service.roof_pitch}`;
-        details += ` - $${service.price.toFixed(2)}`;
-        return details;
-      })
-      .join('\n');
-
-    const emailContent = `
-Hello ${booking.customer_name || 'valued customer'},
-
-Thank you for choosing Big Cat Pressure Washing! Here are your booking details:
-
-Booking Reference: ${booking.id}
-Total Amount: $${booking.total_amount.toFixed(2)}
-Required Deposit: $${booking.deposit_amount.toFixed(2)}
-
-Services:
-${servicesList}
-
-Service Location:
-${booking.address}
-${booking.city}, ${booking.state} ${booking.zip}
-
-Status: ${booking.status}
-
-We will contact you shortly to confirm your appointment time.
-
-If you have any questions, please don't hesitate to reach out to us at andy@bigcatpressurewashing.com.
-
-Thank you for trusting Big Cat Pressure Washing with your property!
-
-Best regards,
-The Big Cat Pressure Washing Team
-    `.trim();
-
-    // Send email using Resend
-    const resendResponse = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('RESEND_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'Big Cat Pressure Washing <support@bigcatpressurewashing.com>',
-        to: booking.customer_email,
-        subject: 'Booking Confirmation - Big Cat Pressure Washing',
-        text: emailContent,
-      }),
-    });
-
-    if (!resendResponse.ok) {
-      throw new Error('Failed to send email');
-    }
+    await sendConfirmationEmail(booking);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
     });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      }
+    );
   }
 });

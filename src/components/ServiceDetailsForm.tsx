@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, Plus } from 'lucide-react';
-import { Service, RoofPitchMultiplier } from '../types';
+import { Service } from '../types';
 import { buildingMaterials, roofMaterials, roofPitchMultipliers } from '../constants';
 import { serviceDetailsSchema } from '../lib/validations';
 
@@ -9,11 +9,11 @@ interface ServiceDetailsFormProps {
   material: string;
   size: string;
   stories: '1' | '2' | '3';
-  roofPitch: keyof RoofPitchMultiplier;
+  roofPitch: keyof typeof roofPitchMultipliers;
   onMaterialChange: (value: string) => void;
   onSizeChange: (value: string) => void;
   onStoriesChange: (value: '1' | '2' | '3') => void;
-  onRoofPitchChange: (value: keyof RoofPitchMultiplier) => void;
+  onRoofPitchChange: (value: keyof typeof roofPitchMultipliers) => void;
   onCancel: () => void;
   onAdd: () => void;
 }
@@ -51,12 +51,15 @@ export function ServiceDetailsForm({
       serviceDetailsSchema.parse(formData);
       setErrors({});
       onAdd();
-    } catch (error: any) {
+    } catch (error) {
+      if (!(error instanceof Error)) return;
       const formattedErrors: { [key: string]: string } = {};
-      error.errors.forEach((err: any) => {
-        const path = err.path[0];
-        formattedErrors[path] = err.message;
-      });
+      if ('errors' in error) {
+        (error.errors as Array<{ path: string[]; message: string }>).forEach((err) => {
+          const path = err.path[0];
+          formattedErrors[path] = err.message;
+        });
+      }
       setErrors(formattedErrors);
     }
   };
@@ -111,7 +114,7 @@ export function ServiceDetailsForm({
           <select
             id="roofPitch"
             value={roofPitch}
-            onChange={(e) => onRoofPitchChange(e.target.value as keyof RoofPitchMultiplier)}
+            onChange={(e) => onRoofPitchChange(e.target.value as keyof typeof roofPitchMultipliers)}
             className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
               errors.roofPitch ? 'border-red-500' : 'border-gray-300'
             }`}

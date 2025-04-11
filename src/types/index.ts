@@ -1,26 +1,11 @@
-import { ReactNode } from 'react';
-
-export interface Service {
-  id: string;
-  name: string;
-  icon: ReactNode;
-  imageUrl?: string;
-  description: string;
-  materialRequired: boolean;
-  baseRate: number;
-  minimum: number;
-  unit: string;
-  materialMultipliers?: MaterialMultiplier;
-  storyMultipliers?: StoriesMultiplier;
-  roofPitchMultipliers?: RoofPitchMultiplier;
-}
+import type { Service } from './service';
 
 export interface ServiceQuote {
   serviceId: string;
   material?: string;
-  size: string;
-  stories?: '1' | '2' | '3';
-  roofPitch?: 'low pitch' | 'medium pitch' | 'high pitch';
+  size?: string;
+  stories?: number;
+  roofPitch?: string;
   price: number;
 }
 
@@ -52,3 +37,34 @@ export interface Address {
   state: string;
   zip: string;
 }
+
+export interface Booking {
+  id: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  service_quotes: ServiceQuote[];
+  status: 'pending' | 'confirmed' | 'cancelled';
+  payment_status: 'unpaid' | 'partial' | 'paid';
+  total_amount: number;
+  deposit_amount: number;
+  created_at: string;
+}
+
+export interface BookingContextType {
+  services: Service[];
+  setServices: (services: Service[]) => void;
+  selectedService: Service | null;
+  setSelectedService: (service: Service | null) => void;
+  bookingDetails: Record<string, any>;
+  setBookingDetails: (details: Record<string, any>) => void;
+  isLoading: boolean;
+  error: string | null;
+  fetchServices: () => Promise<void>;
+}
+
+export type { Service };

@@ -1,6 +1,5 @@
-import React from 'react';
+import { ServiceQuote } from '@/types';
 import { Check, Trash2, ArrowRight } from 'lucide-react';
-import { ServiceQuote } from '../types';
 
 interface ServiceQuoteListProps {
   quotes: ServiceQuote[];
@@ -8,7 +7,7 @@ interface ServiceQuoteListProps {
   onContinue: () => void;
   showPrices: boolean;
   formatPrice: (price: number) => string;
-  getTotalPrice: () => number | null;
+  getTotalPrice: () => number;
   getServiceSummary: (quote: ServiceQuote) => string;
 }
 
